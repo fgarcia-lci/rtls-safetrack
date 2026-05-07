@@ -1,0 +1,108 @@
+server:
+  port: 8090
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: positioning-api
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  # NO definimos `spring.security.oauth2.resourceserver.jwt.issuer-uri`:
+  # provocaría auto-discovery contra ese host, que en docker no llega.
+  # Definimos un JwtDecoder bean propio en SecurityConfig.java que usa
+  # rtls.auth.jwk-set-uri para fetch del JWKS y rtls.auth.expected-issuer
+  # para validar el claim `iss`.
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3307/dt_safetrack?useSSL=true&serverTimezone=UTC&characterEncoding=utf8&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:dt_root}
+    password: ${DB_PASSWORD:dtroot}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 240000
+      max-lifetime: 900000
+      leak-detection-threshold: 120000
+
+  jpa:
+    hibernate:
+      ddl-auto: none    # Flyway owns the schema
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+          batch_size: 20
+        default_batch_fetch_size: 50
+        order_inserts: true
+        order_updates: true
+    show-sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
+  data:
+    mongodb:
+      uri: ${MONGO_URI:mongodb://dt_app:dt_app_password@localhost:27016/dt_safetrack_metrics?authSource=dt_metrics}
+      auto-index-creation: true
+
+  threads:
+    virtual:
+      enabled: false   # MySQL Connector/J pina virtual threads — mismo motivo que el DT
+
+# RTLS Safetrack — config propia
+rtls:
+  auth:
+    # URL desde la que el api fetchea el JWKS para verificar firmas de JWT.
+    # En docker se sobreescribe a host.docker.internal.
+    jwk-set-uri: ${AUTH_JWK_SET_URI:http://localhost:9000/oauth2/jwks}
+    # Issuer esperado en el claim `iss` del JWT. NO cambia según despliegue
+    # — siempre coincide con lo que emite el auth-server (localhost:9000).
+    expected-issuer: ${AUTH_ISSUER:http://localhost:9000}
+  mqtt:
+    broker-url: ${MQTT_BROKER_URL:tcp://localhost:1884}
+    client-id-prefix: ${MQTT_CLIENT_ID_PREFIX:positioning-api}
+    username: ${MQTT_USERNAME:}
+    password: ${MQTT_PASSWORD:}
+    # Topics que el SimulatorAdapter consume en PoC
+    topic-patterns:
+      simulator-position: sim/v1/plant/+/tag/+/position
+      simulator-status: sim/v1/plant/+/tag/+/status
+      simulator-heartbeat: sim/v1/plant/+/system/heartbeat
+    # Topic donde publicamos comandos (template; el formato/topic real lo decide el adapter del proveedor)
+    command-topic-template: sim/v1/plant/{plantId}/tag/{tagId}/command
+
+# Branding y config app-level
+app:
+  brand:
+    name: RTLS Safetrack
+    logo-url: https://www.lc-i.es/images/logo_lci.png
+  websocket:
+    allowed-origins: ${WS_ALLOWED_ORIGINS:http://localhost:*}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /management
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    '[org.hibernate.SQL]': WARN
+    '[org.springframework.security]': DEBUG
+    '[com.lci]': DEBUG

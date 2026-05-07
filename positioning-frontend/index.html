@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RTLS Safetrack</title>
+    <!--
+      pako (zlib en JS) — necesario por xeokit-sdk para descomprimir XKT.
+      Lo cargamos desde CDN ANTES del bundle porque la build minificada de
+      Vite no resuelve bien el `require("pako")` interno de xeokit.
+      Cuando integremos al DT podemos servirlo desde nuestro propio CDN.
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Polyfill for SockJS global object -->
+    <script>
+      window.global = window;
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

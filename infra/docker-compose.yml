@@ -1,0 +1,104 @@
+name: rtls-safetrack
+
+# Stack completo de RTLS Safetrack.
+#
+#   - mosquitto             (broker MQTT)
+#   - positioning-api       (Spring Boot)
+#   - positioning-frontend  (Vite build + nginx, proxy /api → api)
+#   - simulator             (Python, opt-in con `--profile sim`)
+#
+# Dependencias externas (MySQL, MongoDB, auth-server) viven en el docker-compose
+# del Digital Twin. Asegúrate de tenerlo arrancado antes:
+#   cd C:/PACO/workspaces/digital-twin/dt-infra && docker compose up -d
+#
+# Comandos:
+#   docker compose up -d                        # mosquitto + api + frontend
+#   docker compose --profile sim up -d          # idem + simulator
+#   docker compose --profile sim up -d --build  # idem + rebuild imágenes
+
+services:
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: rts-mosquitto
+    restart: unless-stopped
+    ports:
+      # Host 1884 → contenedor 1883. El 1883 del host está ocupado por otro Mosquitto.
+      # Internamente entre contenedores se sigue accediendo como mosquitto:1883.
+      - "1884:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - rts-net
+
+  positioning-api:
+    build:
+      context: ../positioning-api
+      dockerfile: Dockerfile
+    container_name: rtls-api
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    ports:
+      - "8090:8090"
+    environment:
+      # MySQL y Mongo del DT, accedidos vía host.docker.internal.
+      DB_URL: jdbc:mysql://host.docker.internal:3307/dt_safetrack?useSSL=true&serverTimezone=UTC&characterEncoding=utf8&allowPublicKeyRetrieval=true
+      DB_USERNAME: dt_root
+      DB_PASSWORD: dtroot
+      MONGO_URI: mongodb://dt_app:dt_app_password@host.docker.internal:27016/dt_safetrack_metrics?authSource=dt_metrics
+      # JWKS lo fetcheamos desde host.docker.internal (alcanzable desde el contenedor).
+      # El `iss` del JWT sigue siendo http://localhost:9000 — eso lo valida
+      # el JwtIssuerValidator con AUTH_ISSUER por separado.
+      AUTH_JWK_SET_URI: http://host.docker.internal:9000/oauth2/jwks
+      AUTH_ISSUER: http://localhost:9000
+      MQTT_BROKER_URL: tcp://mosquitto:1883
+      CORS_ALLOWED_ORIGINS: http://localhost:5180
+      WS_ALLOWED_ORIGINS: http://localhost:*
+      JAVA_OPTS: "-Xmx512m"
+    networks:
+      - rts-net
+
+  positioning-frontend:
+    build:
+      context: ../positioning-frontend
+      dockerfile: Dockerfile
+    container_name: rtls-frontend
+    restart: unless-stopped
+    depends_on:
+      - positioning-api
+    ports:
+      # Mismo puerto que en dev → 5180 (nginx interno escucha en 80)
+      - "5180:80"
+    networks:
+      - rts-net
+
+  # Simulador MQTT — profile "sim" para arrancarlo opt-in.
+  simulator:
+    build:
+      context: ../simulator
+      dockerfile: Dockerfile
+    container_name: rtls-simulator
+    restart: unless-stopped
+    profiles: [sim]
+    depends_on:
+      - mosquitto
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+    volumes:
+      # Permite editar tags.yaml en host y reiniciar el contenedor
+      # sin rebuild de imagen.
+      - ../simulator/tags.yaml:/app/tags.yaml:ro
+    networks:
+      - rts-net
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+
+networks:
+  rts-net:
+    driver: bridge

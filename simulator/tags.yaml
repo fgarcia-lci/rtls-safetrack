@@ -1,0 +1,140 @@
+# =============================================================================
+# RTLS Safetrack — configuración del simulador
+#
+# Coordenadas en el sistema mundial del XKT solubilizacion_v1 (UTM-like).
+# Bbox del modelo (de viewer.scene.models.ALL.aabb):
+#   X: -2465133.66 .. -2464901.46  (ancho ~232 m)
+#   Y_horizontal (Z en xeokit): 32235034.74 .. 32235242.05  (ancho ~207 m)
+#   Z (altura, Y en xeokit): 64.22 .. 163.42  (suelo a 64.22)
+#
+# Convención del simulador (RTLS clásica): waypoints = [X, Y_horizontal]
+# (top-down). La altura va en `default_z`. El visor 3D hace el swap Y↔Z al
+# pintar para que xeokit (Y-up) lo coloque a la altura correcta.
+#
+# Cinturón humano: ~1.2 m sobre el suelo → 64.22 + 1.2 ≈ 65.4 m de altura.
+# =============================================================================
+
+plant_id: TSP3
+
+broker:
+  host: ${MQTT_HOST:-localhost}
+  port: ${MQTT_PORT:-1884}
+  username: ${MQTT_USERNAME:-}
+  password: ${MQTT_PASSWORD:-}
+  client_id_prefix: rtls-simulator
+
+publish:
+  position_hz: 1
+  status_seconds: 30
+  heartbeat_seconds: 10
+
+simulation:
+  tick_ms: 100
+  jitter_m: 0.10
+  default_z: 65.5             # altura del cinturón sobre el suelo del modelo
+  battery_drop_per_hour_pct: 0.5
+
+tags:
+  - id: "AA:BB:CC:DD:00:01"
+    name: "Worker_01"
+    waypoints:
+      - [-2465110, 32235060]
+      - [-2465030, 32235060]
+      - [-2465030, 32235100]
+      - [-2465110, 32235100]
+    speed: 1.2
+    pause_at_waypoint_seconds: 2
+    battery_start: 95
+
+  - id: "AA:BB:CC:DD:00:02"
+    name: "Worker_02"
+    waypoints:
+      - [-2464990, 32235060]
+      - [-2464930, 32235060]
+      - [-2464930, 32235110]
+      - [-2464990, 32235110]
+    speed: 1.0
+    pause_at_waypoint_seconds: 3
+    battery_start: 80
+
+  - id: "AA:BB:CC:DD:00:03"
+    name: "Worker_03"
+    waypoints:
+      - [-2465110, 32235150]
+      - [-2465040, 32235150]
+      - [-2465040, 32235220]
+      - [-2465110, 32235220]
+    speed: 1.4
+    pause_at_waypoint_seconds: 1
+    battery_start: 70
+
+  - id: "AA:BB:CC:DD:00:04"
+    name: "Worker_04"
+    waypoints:
+      - [-2464990, 32235150]
+      - [-2464920, 32235150]
+      - [-2464920, 32235210]
+      - [-2464990, 32235210]
+    speed: 1.1
+    pause_at_waypoint_seconds: 5
+    battery_start: 60
+
+  - id: "AA:BB:CC:DD:00:05"
+    name: "Worker_05"
+    waypoints:
+      - [-2465100, 32235070]
+      - [-2464950, 32235100]
+      - [-2465000, 32235180]
+      - [-2464940, 32235210]
+    speed: 0.8
+    pause_at_waypoint_seconds: 4
+    battery_start: 50
+
+  - id: "AA:BB:CC:DD:00:06"
+    name: "Worker_06"
+    waypoints:
+      - [-2465020, 32235060]
+      - [-2465020, 32235220]
+    speed: 0.9
+    pause_at_waypoint_seconds: 6
+    battery_start: 45
+
+  - id: "AA:BB:CC:DD:00:07"
+    name: "Worker_07"
+    waypoints:
+      - [-2465110, 32235180]
+      - [-2464930, 32235180]
+    speed: 1.3
+    pause_at_waypoint_seconds: 2
+    battery_start: 88
+
+  - id: "AA:BB:CC:DD:00:08"
+    name: "Worker_08"
+    waypoints:
+      - [-2465120, 32235055]
+      - [-2464925, 32235055]
+      - [-2464925, 32235225]
+      - [-2465120, 32235225]
+    speed: 1.0
+    pause_at_waypoint_seconds: 3
+    battery_start: 75
+
+  - id: "AA:BB:CC:DD:00:09"
+    name: "Worker_09"
+    waypoints:
+      - [-2464950, 32235070]
+      - [-2464950, 32235220]
+    speed: 1.5
+    pause_at_waypoint_seconds: 1
+    battery_start: 30
+
+  - id: "AA:BB:CC:DD:00:0A"
+    name: "Worker_10"
+    waypoints:
+      - [-2465040, 32235120]
+      - [-2464990, 32235120]
+      - [-2464990, 32235160]
+      - [-2465040, 32235160]
+    speed: 1.1
+    pause_at_waypoint_seconds: 2
+    battery_start: 100

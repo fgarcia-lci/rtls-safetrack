@@ -1,0 +1,172 @@
+{
+  "common": {
+    "appName": "RTLS Safetrack",
+    "loading": "Cargando...",
+    "error": "Error",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "back": "Atrás",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "create": "Crear",
+    "search": "Buscar",
+    "yes": "Sí",
+    "no": "No",
+    "confirm": "Confirmar",
+    "active": "Activo",
+    "inactive": "Inactivo"
+  },
+  "auth": {
+    "login": "Iniciar sesión",
+    "logout": "Cerrar sesión",
+    "loggingIn": "Iniciando sesión...",
+    "loggingOut": "Cerrando sesión...",
+    "loginError": "Error de autenticación",
+    "noPermission": "No tienes permiso para acceder a este recurso",
+    "sessionExpired": "Tu sesión ha caducado"
+  },
+  "navigation": {
+    "dashboard": "Panel",
+    "live": "Vista en tiempo real",
+    "workers": "Trabajadores",
+    "tags": "Tags",
+    "zones": "Zonas de seguridad",
+    "events": "Eventos",
+    "settings": "Configuración"
+  },
+  "plant": {
+    "selector": "Planta",
+    "noPlants": "No hay plantas disponibles"
+  },
+  "language": {
+    "label": "Idioma",
+    "en": "Inglés",
+    "es": "Español"
+  },
+  "tooltips": {
+    "changeLanguage": "Cambiar idioma",
+    "settings": "Configuración",
+    "notifications": "Notificaciones"
+  },
+  "userMenu": {
+    "logout": "Cerrar sesión"
+  },
+  "login": {
+    "subtitle": "Real-Time Safety Tracking",
+    "redirecting": "Redirigiendo al inicio de sesión...",
+    "logoutSuccess": "Has cerrado sesión correctamente",
+    "logoutSuccessDetail": "Redirigiendo al inicio de sesión...",
+    "error": {
+      "credentials": "Credenciales no válidas",
+      "locked": "Tu cuenta está bloqueada",
+      "expired": "Tu sesión ha caducado",
+      "generic": "Error de autenticación"
+    }
+  },
+  "workers": {
+    "searchPlaceholder": "Buscar por nombre, código o empresa...",
+    "createButton": "Nuevo trabajador",
+    "noResults": "No se encontraron trabajadores",
+    "allCompanyTypes": "Todos los tipos",
+    "allStates": "Todos",
+    "deleteConfirm": "¿Dar de baja al trabajador '{{name}}'?",
+    "columns": {
+      "employeeCode": "Código",
+      "fullName": "Nombre",
+      "companyName": "Empresa",
+      "companyType": "Tipo",
+      "email": "Email",
+      "isActive": "Estado",
+      "actions": "Acciones"
+    },
+    "companyType": {
+      "INTERNAL": "Interno",
+      "CONTRACTOR": "Subcontrata",
+      "VISITOR": "Visita"
+    },
+    "dialog": {
+      "createTitle": "Crear trabajador",
+      "editTitle": "Editar trabajador",
+      "fields": {
+        "employeeCode": "Código empleado",
+        "fullName": "Nombre completo",
+        "phone": "Teléfono",
+        "email": "Email",
+        "companyName": "Empresa",
+        "companyType": "Tipo",
+        "roleInPlant": "Rol en planta",
+        "hireDate": "Fecha contratación",
+        "notes": "Notas",
+        "isActive": "Activo"
+      }
+    },
+    "toast": {
+      "created": "Trabajador creado",
+      "updated": "Trabajador actualizado",
+      "deleted": "Trabajador dado de baja"
+    }
+  },
+  "tags": {
+    "searchPlaceholder": "Buscar por serial, modelo o fabricante...",
+    "createButton": "Nuevo tag",
+    "assignButton": "Asignar",
+    "unassignTooltip": "Desasignar trabajador",
+    "decommission": "Dar de baja",
+    "decommissionConfirm": "¿Dar de baja al tag '{{serial}}'?",
+    "allStates": "Todos los estados",
+    "allAssignment": "Todos",
+    "assigned": "Asignados",
+    "unassigned": "Sin asignar",
+    "noResults": "No se encontraron tags",
+    "columns": {
+      "serial": "Serial",
+      "model": "Modelo",
+      "state": "Estado",
+      "battery": "Batería",
+      "assignment": "Asignado a",
+      "lastSeen": "Última señal",
+      "actions": "Acciones"
+    },
+    "state": {
+      "ACTIVE": "Activo",
+      "IDLE": "Inactivo",
+      "LOW_BATTERY": "Batería baja",
+      "LOST": "Perdido",
+      "UNKNOWN": "Desconocido",
+      "DECOMMISSIONED": "Dado de baja"
+    },
+    "dialog": {
+      "createTitle": "Crear tag",
+      "editTitle": "Editar tag",
+      "fields": {
+        "serial": "Serial",
+        "model": "Modelo",
+        "vendor": "Fabricante",
+        "firmwareVersion": "Firmware",
+        "plantId": "Planta",
+        "notes": "Notas"
+      }
+    },
+    "assignDialog": {
+      "title": "Asignar trabajador al tag {{serial}}",
+      "searchLabel": "Buscar trabajador",
+      "assign": "Asignar"
+    },
+    "toast": {
+      "created": "Tag creado",
+      "updated": "Tag actualizado",
+      "decommissioned": "Tag dado de baja",
+      "assigned": "Tag asignado",
+      "unassigned": "Tag desasignado"
+    }
+  },
+  "live": {
+    "layers": "Disciplinas",
+    "tagInfoTitle": "Información del tag",
+    "assignedWorker": "Trabajador asignado",
+    "unassigned": "Sin asignar",
+    "tagNotFound": "Tag no encontrado",
+    "noView": "No hay vista 3D configurada para esta planta"
+  }
+}

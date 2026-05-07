@@ -1,0 +1,37 @@
+package com.lci.rtls.positioning.plantview.dto;
+
+import com.lci.rtls.positioning.plantview.PlantView;
+
+import java.util.List;
+
+public record PlantViewDto(
+        Long id,
+        String plantId,
+        String code,
+        String name,
+        PlantView.Type type,
+        /** Asset principal — fallback cuando no hay layers (vista mono-XKT). */
+        String assetUrl,
+        String bbox,
+        String defaultCamera,
+        Integer displayOrder,
+        String thumbnailUrl,
+        /** Lista de layers (XKTs por disciplina). Vacía si la vista es single-asset. */
+        List<PlantViewLayerDto> layers
+) {
+    public static PlantViewDto from(PlantView pv, List<PlantViewLayerDto> layers) {
+        return new PlantViewDto(
+                pv.getId(),
+                pv.getPlantId(),
+                pv.getCode(),
+                pv.getName(),
+                pv.getType(),
+                pv.getAssetUrl(),
+                pv.getBbox(),
+                pv.getDefaultCamera(),
+                pv.getDisplayOrder(),
+                pv.getThumbnailUrl(),
+                layers
+        );
+    }
+}

@@ -1,0 +1,49 @@
+# IDEs
+.idea/
+.vscode/
+*.iml
+*.iws
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Maven (Java backend)
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+# Node (frontend)
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Python (simulator)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Docker volumes locales
+infra/mosquitto/data/
+infra/mosquitto/log/
+
+# Logs
+*.log
+logs/
+
+# Local env / secrets
+.env
+.env.local
+*.local
+
+# Claude Code (no commit local settings)
+.claude/settings.local.json
+
+# Modelos XKT — pesan >100MB y GitHub los rechaza. El cliente / dev local
+# tiene que copiar manualmente solubilizacion_v1.xkt a
+# positioning-frontend/public/models/. A futuro: servirlos desde un CDN
+# o usar Git LFS si crecen los modelos.
+positioning-frontend/public/models/*.xkt

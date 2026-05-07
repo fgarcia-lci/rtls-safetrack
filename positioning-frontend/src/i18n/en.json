@@ -1,0 +1,172 @@
+{
+  "common": {
+    "appName": "RTLS Safetrack",
+    "loading": "Loading...",
+    "error": "Error",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "back": "Back",
+    "edit": "Edit",
+    "delete": "Delete",
+    "create": "Create",
+    "search": "Search",
+    "yes": "Yes",
+    "no": "No",
+    "confirm": "Confirm",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "auth": {
+    "login": "Sign in",
+    "logout": "Sign out",
+    "loggingIn": "Signing in...",
+    "loggingOut": "Signing out...",
+    "loginError": "Authentication failed",
+    "noPermission": "You don't have permission to access this resource",
+    "sessionExpired": "Your session has expired"
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "live": "Live View",
+    "workers": "Workers",
+    "tags": "Tags",
+    "zones": "Safety Zones",
+    "events": "Events",
+    "settings": "Settings"
+  },
+  "plant": {
+    "selector": "Plant",
+    "noPlants": "No plants available"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "es": "Spanish"
+  },
+  "tooltips": {
+    "changeLanguage": "Change language",
+    "settings": "Settings",
+    "notifications": "Notifications"
+  },
+  "userMenu": {
+    "logout": "Sign out"
+  },
+  "login": {
+    "subtitle": "Real-Time Safety Tracking",
+    "redirecting": "Redirecting to sign-in...",
+    "logoutSuccess": "You have signed out successfully",
+    "logoutSuccessDetail": "Redirecting to sign-in...",
+    "error": {
+      "credentials": "Invalid credentials",
+      "locked": "Your account is locked",
+      "expired": "Your session has expired",
+      "generic": "Authentication failed"
+    }
+  },
+  "workers": {
+    "searchPlaceholder": "Search by name, code or company...",
+    "createButton": "New worker",
+    "noResults": "No workers found",
+    "allCompanyTypes": "All types",
+    "allStates": "All",
+    "deleteConfirm": "Deactivate worker '{{name}}'?",
+    "columns": {
+      "employeeCode": "Code",
+      "fullName": "Name",
+      "companyName": "Company",
+      "companyType": "Type",
+      "email": "Email",
+      "isActive": "Status",
+      "actions": "Actions"
+    },
+    "companyType": {
+      "INTERNAL": "Internal",
+      "CONTRACTOR": "Contractor",
+      "VISITOR": "Visitor"
+    },
+    "dialog": {
+      "createTitle": "Create worker",
+      "editTitle": "Edit worker",
+      "fields": {
+        "employeeCode": "Employee code",
+        "fullName": "Full name",
+        "phone": "Phone",
+        "email": "Email",
+        "companyName": "Company",
+        "companyType": "Type",
+        "roleInPlant": "Role at plant",
+        "hireDate": "Hire date",
+        "notes": "Notes",
+        "isActive": "Active"
+      }
+    },
+    "toast": {
+      "created": "Worker created",
+      "updated": "Worker updated",
+      "deleted": "Worker deactivated"
+    }
+  },
+  "tags": {
+    "searchPlaceholder": "Search by serial, model or vendor...",
+    "createButton": "New tag",
+    "assignButton": "Assign",
+    "unassignTooltip": "Unassign worker",
+    "decommission": "Decommission",
+    "decommissionConfirm": "Decommission tag '{{serial}}'?",
+    "allStates": "All states",
+    "allAssignment": "All",
+    "assigned": "Assigned",
+    "unassigned": "Unassigned",
+    "noResults": "No tags found",
+    "columns": {
+      "serial": "Serial",
+      "model": "Model",
+      "state": "State",
+      "battery": "Battery",
+      "assignment": "Assigned to",
+      "lastSeen": "Last seen",
+      "actions": "Actions"
+    },
+    "state": {
+      "ACTIVE": "Active",
+      "IDLE": "Idle",
+      "LOW_BATTERY": "Low battery",
+      "LOST": "Lost",
+      "UNKNOWN": "Unknown",
+      "DECOMMISSIONED": "Decommissioned"
+    },
+    "dialog": {
+      "createTitle": "Create tag",
+      "editTitle": "Edit tag",
+      "fields": {
+        "serial": "Serial",
+        "model": "Model",
+        "vendor": "Vendor",
+        "firmwareVersion": "Firmware",
+        "plantId": "Plant",
+        "notes": "Notes"
+      }
+    },
+    "assignDialog": {
+      "title": "Assign worker to tag {{serial}}",
+      "searchLabel": "Search worker",
+      "assign": "Assign"
+    },
+    "toast": {
+      "created": "Tag created",
+      "updated": "Tag updated",
+      "decommissioned": "Tag decommissioned",
+      "assigned": "Tag assigned",
+      "unassigned": "Tag unassigned"
+    }
+  },
+  "live": {
+    "layers": "Layers",
+    "tagInfoTitle": "Tag info",
+    "assignedWorker": "Assigned worker",
+    "unassigned": "Unassigned",
+    "tagNotFound": "Tag not found",
+    "noView": "No 3D view configured for this plant"
+  }
+}
