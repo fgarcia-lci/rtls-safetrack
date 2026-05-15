@@ -28,16 +28,23 @@ import {
   Notes as NotesIcon,
   Visibility as FollowIcon,
   VisibilityOff as UnfollowIcon,
+  Height as HeightIcon,
+  PinDrop as PinDropIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { tagService } from '../../services/tagService';
 import { workerService } from '../../services/workerService';
+import { positionsStream } from '../../services/positionsStream';
+import { floorHeightM, formatHeight } from '../../utils/positionHeight';
 import type { Tag, TagStateValue, CompanyType } from '../../types/tag';
 import type { Worker } from '../../types/worker';
+import type { PlantView } from './types';
 
 interface Props {
   open: boolean;
   serial: string | null;
+  /** Necesario para calcular altura sobre suelo. */
+  plantView?: PlantView | null;
   onClose: () => void;
   /** Estado del seguimiento del operario en el visor 3D. */
   following?: boolean;
@@ -60,10 +67,10 @@ const COMPANY_COLOR: Record<CompanyType, string> = {
   VISITOR: '#9b5fc7',
 };
 
-const COMPANY_LABEL: Record<CompanyType, string> = {
-  INTERNAL: 'Interno',
-  CONTRACTOR: 'Subcontrata',
-  VISITOR: 'Visitante',
+const COMPANY_TYPE_KEY: Record<CompanyType, string> = {
+  INTERNAL: 'workers.companyType.INTERNAL',
+  CONTRACTOR: 'workers.companyType.CONTRACTOR',
+  VISITOR: 'workers.companyType.VISITOR',
 };
 
 function batteryIcon(pct?: number | null) {
@@ -114,7 +121,7 @@ function FieldRow({ icon, label, value }: FieldRowProps) {
 }
 
 export function WorkerInfoPanel({
-  open, serial, onClose, following = false, onToggleFollow,
+  open, serial, plantView = null, onClose, following = false, onToggleFollow,
 }: Props) {
   const { t } = useTranslation();
   const [tag, setTag] = useState<Tag | null>(null);
@@ -151,6 +158,23 @@ export function WorkerInfoPanel({
     return () => { cancelled = true; };
   }, [open, serial, t]);
 
+  // Posición del operario: altura sobre el suelo + coords X/Y en la
+  // fábrica. Polling cada 1s desde el singleton de positionsStream —
+  // basta con esa frecuencia, no es un valor crítico que necesite
+  // 30 fps.
+  const [currentPos, setCurrentPos] = useState<{ x: number; y: number; z: number } | null>(null);
+  useEffect(() => {
+    if (!open || !serial) { setCurrentPos(null); return; }
+    const update = () => {
+      const last = positionsStream.getLast(serial);
+      setCurrentPos(last ? { x: last.x, y: last.y, z: last.z } : null);
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [open, serial]);
+  const heightOverFloor = currentPos !== null ? floorHeightM(plantView, currentPos.z) : null;
+
   // Color del header según tipo de empleado. Sin worker → gris oscuro.
   // Importante: hex de 6 dígitos para que el sufijo `cc` del gradiente
   // (alpha 80%) sea CSS válido (#444 + cc = #444cc inválido).
@@ -163,17 +187,30 @@ export function WorkerInfoPanel({
       anchor="right"
       open={open}
       onClose={onClose}
-      // El AppBar es fixed (h=64px) y se queda por encima del drawer si
-      // este arranca en top:0 → su cabecera se ocultaría tras el header.
-      // Empujamos el panel para que arranque debajo del AppBar.
+      // - PaperProps top:64 → debajo del AppBar fixed.
+      // - hideBackdrop + pointerEvents:none en el Modal root → la vista
+      //   3D detrás sigue interactiva (drag, zoom, click en muñequito).
+      //   El paper sí captura events (auto) para sus propios clicks.
+      // - disableEnforceFocus / disableAutoFocus → no roba el focus al
+      //   visor (que necesita keyboard + ratón para orbit/pan).
+      ModalProps={{
+        hideBackdrop: true,
+        disableEnforceFocus: true,
+        disableAutoFocus: true,
+        disableRestoreFocus: true,
+        keepMounted: false,
+      }}
       PaperProps={{
         sx: {
           top: 64,
           height: 'calc(100% - 64px)',
           boxShadow: '-4px 0 16px rgba(0,0,0,0.15)',
+          pointerEvents: 'auto',
         },
       }}
-      sx={{ '& .MuiBackdrop-root': { top: 64 } }}
+      sx={{
+        pointerEvents: 'none',
+      }}
     >
       <Box sx={{ width: 380, display: 'flex', flexDirection: 'column', height: '100%' }}>
         {/* Cabecera con avatar + nombre + chip tipo. Color por companyType. */}
@@ -215,7 +252,7 @@ export function WorkerInfoPanel({
                 <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5, flexWrap: 'wrap' }}>
                   <Chip
                     size="small"
-                    label={COMPANY_LABEL[worker.companyType]}
+                    label={t(COMPANY_TYPE_KEY[worker.companyType])}
                     sx={{
                       bgcolor: 'rgba(255,255,255,0.25)',
                       color: '#fff',
@@ -251,44 +288,68 @@ export function WorkerInfoPanel({
                   startIcon={following ? <UnfollowIcon /> : <FollowIcon />}
                   onClick={onToggleFollow}
                 >
-                  {following ? 'Dejar de seguir' : 'Seguir en 3D'}
+                  {following ? t('live.unfollow') : t('live.follow')}
+                </Button>
+              )}
+
+              {/* Demo: disparar SOS como si lo hubiera pulsado el operario.
+                  Solo para demos sin hardware real. */}
+              {tag.serial && (
+                <Button
+                  fullWidth
+                  variant="contained"
+                  color="error"
+                  size="large"
+                  sx={{ fontWeight: 700, letterSpacing: 2 }}
+                  onClick={async () => {
+                    if (!confirm(t('live.sosSimulateConfirm'))) return;
+                    try {
+                      const { sosService } = await import('../../services/sosService');
+                      await sosService.simulate(tag.serial);
+                    } catch (err) {
+                      console.error('SOS simulate error', err);
+                      alert(t('live.sosSimulateError'));
+                    }
+                  }}
+                >
+                  {t('live.sosSimulateButton')}
                 </Button>
               )}
 
               {/* Datos del operario (si hay worker) */}
               {worker && (
                 <Stack spacing={1.5}>
-                  <Typography variant="overline" color="text.secondary">Operario</Typography>
+                  <Typography variant="overline" color="text.secondary">{t('live.workerSection')}</Typography>
                   <FieldRow
                     icon={<BadgeIcon fontSize="small" />}
-                    label="Código"
+                    label={t('live.fields.employeeCode')}
                     value={<span style={{ fontFamily: 'monospace' }}>{worker.employeeCode}</span>}
                   />
                   {worker.roleInPlant && (
                     <FieldRow
                       icon={<WorkIcon fontSize="small" />}
-                      label="Puesto en planta"
+                      label={t('live.fields.roleInPlant')}
                       value={worker.roleInPlant}
                     />
                   )}
                   {worker.phone && (
                     <FieldRow
                       icon={<PhoneIcon fontSize="small" />}
-                      label="Teléfono"
+                      label={t('live.fields.phone')}
                       value={<a href={`tel:${worker.phone}`} style={{ color: 'inherit' }}>{worker.phone}</a>}
                     />
                   )}
                   {worker.email && (
                     <FieldRow
                       icon={<EmailIcon fontSize="small" />}
-                      label="Email"
+                      label={t('live.fields.email')}
                       value={<a href={`mailto:${worker.email}`} style={{ color: 'inherit' }}>{worker.email}</a>}
                     />
                   )}
                   {worker.hireDate && (
                     <FieldRow
                       icon={<CalendarIcon fontSize="small" />}
-                      label="Alta en la empresa"
+                      label={t('live.fields.hireDate')}
                       value={new Date(worker.hireDate).toLocaleDateString()}
                     />
                   )}
@@ -300,10 +361,10 @@ export function WorkerInfoPanel({
                 <>
                   <Divider />
                   <Stack spacing={1.5}>
-                    <Typography variant="overline" color="text.secondary">Empresa</Typography>
+                    <Typography variant="overline" color="text.secondary">{t('live.companySection')}</Typography>
                     <FieldRow
                       icon={<BusinessIcon fontSize="small" />}
-                      label={COMPANY_LABEL[worker.companyType]}
+                      label={t(COMPANY_TYPE_KEY[worker.companyType])}
                       value={worker.companyName}
                     />
                   </Stack>
@@ -313,10 +374,10 @@ export function WorkerInfoPanel({
               {/* Tag asignado */}
               <Divider />
               <Stack spacing={1.5}>
-                <Typography variant="overline" color="text.secondary">Tag</Typography>
+                <Typography variant="overline" color="text.secondary">{t('live.tagSection')}</Typography>
                 <FieldRow
                   icon={<Sensors fontSize="small" />}
-                  label="Serial"
+                  label={t('tags.columns.serial')}
                   value={<span style={{ fontFamily: 'monospace' }}>{tag.serial}</span>}
                 />
                 <Stack direction="row" spacing={1} alignItems="center">
@@ -330,7 +391,7 @@ export function WorkerInfoPanel({
                     {tag.batteryLastPct != null ? `${tag.batteryLastPct}%` : '—'}
                   </Typography>
                   <Box sx={{ flexGrow: 1 }} />
-                  <Typography variant="caption" color="text.secondary" title="Última señal">
+                  <Typography variant="caption" color="text.secondary" title={t('tags.columns.lastSeen')}>
                     {relativeTime(tag.lastSeenAt)}
                   </Typography>
                 </Stack>
@@ -342,12 +403,47 @@ export function WorkerInfoPanel({
                 )}
               </Stack>
 
+              {/* Posición — altura sobre el suelo + coords X/Y en la
+                  fábrica. Crítico en vistas 2D para distinguir si el
+                  operario está en planta baja, subido a una pasarela,
+                  o en otro nivel. */}
+              {currentPos !== null && (
+                <>
+                  <Divider />
+                  <Stack spacing={1.5}>
+                    <Typography variant="overline" color="text.secondary">{t('live.positionSection')}</Typography>
+                    {heightOverFloor !== null ? (
+                      <FieldRow
+                        icon={<HeightIcon fontSize="small" />}
+                        label={t('live.heightOverFloor')}
+                        value={formatHeight(heightOverFloor)}
+                      />
+                    ) : (
+                      <FieldRow
+                        icon={<HeightIcon fontSize="small" />}
+                        label={t('live.heightZ')}
+                        value={formatHeight(currentPos.z)}
+                      />
+                    )}
+                    <FieldRow
+                      icon={<PinDropIcon fontSize="small" />}
+                      label={t('live.coordsXY')}
+                      value={
+                        <span style={{ fontFamily: 'monospace' }}>
+                          {currentPos.x.toFixed(1)} , {currentPos.y.toFixed(1)}
+                        </span>
+                      }
+                    />
+                  </Stack>
+                </>
+              )}
+
               {/* Notas del worker */}
               {worker?.notes && (
                 <>
                   <Divider />
                   <Stack spacing={1}>
-                    <Typography variant="overline" color="text.secondary">Notas</Typography>
+                    <Typography variant="overline" color="text.secondary">{t('live.notesSection')}</Typography>
                     <Stack direction="row" spacing={1.5} alignItems="flex-start">
                       <NotesIcon fontSize="small" color="action" sx={{ mt: 0.25 }} />
                       <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
@@ -361,7 +457,7 @@ export function WorkerInfoPanel({
               {/* Tag sin worker asignado */}
               {!worker && tag.assignedWorkerId == null && (
                 <Alert severity="info" variant="outlined">
-                  {t('live.unassigned')} — este tag no está asignado a ningún operario.
+                  {t('live.tagWithoutWorker')}
                 </Alert>
               )}
             </Stack>

@@ -14,6 +14,8 @@ public record PlantViewDto(
         String assetUrl,
         String bbox,
         String defaultCamera,
+        Double defaultYOffset,
+        Double defaultAvatarHeightM,
         Integer displayOrder,
         String thumbnailUrl,
         /** Lista de layers (XKTs por disciplina). Vacía si la vista es single-asset. */
@@ -29,6 +31,8 @@ public record PlantViewDto(
                 pv.getAssetUrl(),
                 pv.getBbox(),
                 pv.getDefaultCamera(),
+                pv.getDefaultYOffset(),
+                pv.getDefaultAvatarHeightM(),
                 pv.getDisplayOrder(),
                 pv.getThumbnailUrl(),
                 layers

@@ -16,6 +16,8 @@ import { usePositionsStream } from '../../hooks/usePositionsStream';
 import { tagService } from '../../services/tagService';
 import { zoneService } from '../../services/zoneService';
 import { proximityStream } from '../../services/proximityStream';
+import { userViewPrefsService } from '../../services/userViewPrefsService';
+import { loadXktBytes } from '../../utils/xktCache';
 import type { PlantViewLayer, PlantView } from './types';
 import type { Quality } from '../../types/positions';
 import type { Tag } from '../../types/tag';
@@ -27,10 +29,23 @@ interface Props {
   /** Map de visibilidad por código de layer (controlada por el padre). */
   layersVisible: Record<string, boolean>;
   onAvatarClick?: (tagId: string) => void;
+  /** Doble click sobre avatar/pildora → zoom in sin follow. */
+  onAvatarDoubleClick?: (tagId: string) => void;
+  /** Click sobre un mesh de zona — abre el modal de detalle (#52). */
+  onZoneClick?: (zone: SafetyZone) => void;
   /** Serial del operario seleccionado (panel abierto). null si ninguno. */
   selectedSerial?: string | null;
   /** Serial del operario al que la cámara está siguiendo. null = libre. */
   followingSerial?: string | null;
+  /** Offset Y aplicado al modelo (m). Reactivo: cambios en runtime se
+   *  propagan al `model.position` ya cargado. */
+  modelYOffset?: number;
+  /** Vista inicial guardada — si está, se usa en lugar del fly-to AABB
+   *  default al cargar el modelo. */
+  initialCameraEye?: [number, number, number] | null;
+  initialCameraLook?: [number, number, number] | null;
+  /** Altura total del avatar (cuerpo + cabeza) en metros. Default 2 m. */
+  avatarHeightM?: number;
 }
 
 const QUALITY_COLOR: Record<Quality, [number, number, number]> = {
@@ -172,8 +187,14 @@ export function PositioningViewer3D({
   plantView,
   layersVisible,
   onAvatarClick,
+  onAvatarDoubleClick,
+  onZoneClick,
   selectedSerial = null,
   followingSerial = null,
+  modelYOffset = 0,
+  initialCameraEye = null,
+  initialCameraLook = null,
+  avatarHeightM = 2.0,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const navCubeCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -197,9 +218,10 @@ export function PositioningViewer3D({
   const followingSerialRef = useRef<string | null>(followingSerial);
   useEffect(() => {
     // Cuando se activa por primera vez, hacer un fly suave; cuando se
-    // desactiva, limpiar trail.
+    // desactiva, limpiar trail y la ref del último target.
     if (followingSerial !== followingSerialRef.current) {
       cameraFlyToFollowRef.current = followingSerial !== null;
+      lastFollowTargetRef.current = null;
       if (followingSerial == null) {
         if (trailMeshRef.current) {
           try { trailMeshRef.current.destroy(); } catch { /* ignore */ }
@@ -218,6 +240,11 @@ export function PositioningViewer3D({
   const trailMeshRef = useRef<Mesh | null>(null);
   // Flag para una transición suave la primera vez que se activa el follow.
   const cameraFlyToFollowRef = useRef(false);
+  // Última posición del worker que se está siguiendo. Se usa para
+  // calcular el DELTA de movimiento por frame y desplazar la cámara la
+  // misma cantidad → el offset cámara-worker que el usuario ha elegido
+  // (orbit/zoom) se preserva mientras el worker se mueve.
+  const lastFollowTargetRef = useRef<[number, number, number] | null>(null);
   // Centro del modelo en coords mundiales — necesario para crear los
   // avatares con RTC origin y evitar que se descompongan al mover la
   // cámara (precision loss float32 a coords ~32M).
@@ -236,8 +263,23 @@ export function PositioningViewer3D({
   // Lista de zonas cacheada para acceso rápido desde el tick (sin
   // recreación de la animación cuando cambia el array).
   const zonesRef = useRef<SafetyZone[]>([]);
+  // Ref al callback de click de zona — el handler de mouseclicked se
+  // crea una sola vez, así que vamos por ref para no quedarnos con un
+  // closure stale del primer render.
+  const onZoneClickRef = useRef(onZoneClick);
+  useEffect(() => { onZoneClickRef.current = onZoneClick; }, [onZoneClick]);
+  const onAvatarDoubleClickRef = useRef(onAvatarDoubleClick);
+  useEffect(() => { onAvatarDoubleClickRef.current = onAvatarDoubleClick; }, [onAvatarDoubleClick]);
+  // Fly-to compartido entre dblclick del canvas y dblclick del pildora.
+  // Se asigna al crear el viewer (necesita acceso al cameraFlight).
+  const flyToAvatarRef = useRef<((tagId: string) => void) | null>(null);
 
   const { tagIds, getInterpolated } = usePositionsStream(plantId);
+  // Ref para que el handler de mouseclicked (registrado UNA vez en el
+  // useEffect del viewer) lea siempre la versión actual de
+  // getInterpolated en lugar de la del primer render.
+  const getInterpolatedRef = useRef(getInterpolated);
+  useEffect(() => { getInterpolatedRef.current = getInterpolated; }, [getInterpolated]);
 
   // Mapping serial → Tag (para mostrar nombre del operario en el label).
   const [tagsBySerial, setTagsBySerial] = useState<Record<string, Tag>>({});
@@ -259,6 +301,55 @@ export function PositioningViewer3D({
   // Flip a true cuando el modelo XKT termina de cargar — desbloquea la
   // creación de los meshes de zonas (necesitan modelCenterRef ya seteado).
   const [modelReady, setModelReady] = useState(false);
+  // Flip a true cuando el viewer + loader están creados y los refs
+  // poblados. Necesario en deps del effect de carga de layers para
+  // garantizar re-trigger cuando el viewer aparece después de que
+  // `layers` ya esté memoizado (race en navegación SPA).
+  const [viewerReady, setViewerReady] = useState(false);
+
+  // Refs para aplicar offset Y / vista inicial dinámicamente. Las props
+  // van vía ref porque la carga del modelo es async y queremos coger el
+  // valor actual cuando 'loaded' dispara, no el del primer render.
+  const modelYOffsetRef = useRef(modelYOffset);
+  // Escala de avatares — el user configura la ALTURA TOTAL en metros
+  // (cuerpo + cabeza). Internamente el factor de escala es
+  // avatarHeightM / NATURAL_HEIGHT, donde NATURAL_HEIGHT es la suma de
+  // las constantes del modelo geométrico (BODY_HEIGHT + HEAD_RADIUS*2).
+  const NATURAL_AVATAR_HEIGHT = BODY_HEIGHT + HEAD_RADIUS * 2;
+  const avatarScaleRef = useRef(avatarHeightM / NATURAL_AVATAR_HEIGHT);
+  useEffect(() => {
+    avatarScaleRef.current = avatarHeightM / NATURAL_AVATAR_HEIGHT;
+  }, [avatarHeightM, NATURAL_AVATAR_HEIGHT]);
+  useEffect(() => {
+    // Al cambiar la altura, eliminar avatares para que el tick los recree.
+    for (const avatar of avatarsRef.current.values()) {
+      try { avatar.body?.destroy(); } catch { /* ignore */ }
+      try { avatar.head?.destroy(); } catch { /* ignore */ }
+      try { avatar.baseDisc?.destroy(); } catch { /* ignore */ }
+    }
+    avatarsRef.current.clear();
+  }, [avatarHeightM]);
+  // plantViewId via ref para que el callback `model.on('loaded')`
+  // (que vive dentro del closure del effect) siempre lea el id ACTUAL,
+  // no el del primer render donde plantView pudo ser null.
+  const plantViewIdRef = useRef<number | null>(plantView?.id ?? null);
+  useEffect(() => { plantViewIdRef.current = plantView?.id ?? null; }, [plantView]);
+  const initialCameraEyeRef = useRef(initialCameraEye);
+  const initialCameraLookRef = useRef(initialCameraLook);
+  // Map de modelos cargados — necesario para aplicar offset en runtime
+  // cuando el user mueve el slider del panel de ajustes.
+  const loadedModelsRef = useRef<Map<string, ReturnType<XKTLoaderPlugin['load']>>>(new Map());
+  useEffect(() => { modelYOffsetRef.current = modelYOffset; }, [modelYOffset]);
+  useEffect(() => { initialCameraEyeRef.current = initialCameraEye; }, [initialCameraEye]);
+  useEffect(() => { initialCameraLookRef.current = initialCameraLook; }, [initialCameraLook]);
+
+  // Aplicar offset Y al modelo ya cargado cuando cambia el prop —
+  // permite que el slider del panel mueva el modelo en vivo.
+  useEffect(() => {
+    for (const m of loadedModelsRef.current.values()) {
+      try { m.position = [0, modelYOffset, 0]; } catch { /* ignore */ }
+    }
+  }, [modelYOffset]);
   useEffect(() => {
     proximityStream.setPlant(plantId);
     let cancelled = false;
@@ -266,7 +357,6 @@ export function PositioningViewer3D({
       if (cancelled) return;
       setZones(zs);
       zonesRef.current = zs;
-      console.warn('[3D] Zones cargadas:', zs.length);
     }).catch((err) => console.error('[3D] fetch zones error:', err));
     return () => { cancelled = true; };
   }, [plantId]);
@@ -290,6 +380,7 @@ export function PositioningViewer3D({
     });
     viewerRef.current = viewer;
     xktLoaderRef.current = new XKTLoaderPlugin(viewer);
+    setViewerReady(true);
 
     // NavCube — cubo de navegación en esquina superior derecha (mismo
     // patrón que el DT). Click en una cara orienta la cámara, click en
@@ -307,18 +398,92 @@ export function PositioningViewer3D({
     // DEBUG: expone el viewer en window para que se pueda inspeccionar desde la consola
     // del browser. Quitar antes de producción.
     (window as unknown as { __rtlsViewer?: Viewer }).__rtlsViewer = viewer;
-    console.warn('[3D] Viewer creado. Disponible en window.__rtlsViewer');
 
     // Click sobre avatar → emitir tagId. Las figuritas tienen 2 meshes
     // (avatar-{tagId}-body, avatar-{tagId}-head); quitar prefijo y
     // sufijo para sacar el tagId limpio.
+    // Click sobre zona → resolver zoneId desde el mesh id (zone-{id}-fill)
+    // y emitir la zona completa al padre (#52).
     viewer.scene.input.on('mouseclicked', (coords: number[]) => {
-      const hit = viewer.scene.pick({ canvasPos: coords as [number, number] });
+      const [cx, cy] = coords as [number, number];
+
+      // Pre-check screen-space contra los avatares: body+head son meshes
+      // muy pequeños y el `scene.pick` del XKT prioriza el muro de detrás
+      // cuando el click cae un par de pixels fuera de la silueta. Aquí
+      // proyectamos manualmente el centro vertical del avatar a la
+      // pantalla y, si el click cae a menos de N pixels, abrimos el
+      // panel del operario directamente.
+      const PICK_RADIUS_PX = 28;
+      let closestTagId: string | null = null;
+      let closestDist = Infinity;
+      const interpFn = getInterpolatedRef.current;
+      if (interpFn) {
+        const cam = viewer.scene.camera;
+        const canvas = canvasRef.current;
+        for (const tagId of avatarsRef.current.keys()) {
+          const interp = interpFn(tagId);
+          if (!interp || !canvas) continue;
+          const s = avatarScaleRef.current || 1;
+          const bodyH = BODY_HEIGHT * s;
+          const headR = HEAD_RADIUS * s;
+          // Centro del torso del avatar. Coords mundiales directas:
+          // xeokit Y=up, así que mapeamos interp.y → mundo.z, y los
+          // pies del avatar van a `interp.z` (altura real).
+          const wx = interp.x;
+          const wy = interp.z + bodyH * 0.5 + headR;
+          const wz = interp.y;
+          const v4 = math.vec4([wx, wy, wz, 1]);
+          const view = math.transformPoint4(cam.viewMatrix, v4, math.vec4());
+          const clip = math.transformPoint4(cam.projMatrix, view, math.vec4());
+          if (clip[3] <= 0) continue;
+          const ndcX = clip[0] / clip[3];
+          const ndcY = clip[1] / clip[3];
+          const sx = (ndcX + 1) * 0.5 * canvas.clientWidth;
+          const sy = (1 - ndcY) * 0.5 * canvas.clientHeight;
+          const d = Math.hypot(sx - cx, sy - cy);
+          if (d < closestDist) { closestDist = d; closestTagId = tagId; }
+        }
+      }
+      if (closestTagId && closestDist <= PICK_RADIUS_PX) {
+        onAvatarClick?.(closestTagId);
+        return;
+      }
+
+      const hit = viewer.scene.pick({ canvasPos: [cx, cy] });
       const id = hit?.entity?.id as string | undefined;
-      if (id && typeof id === 'string' && id.startsWith(AVATAR_PREFIX)) {
+      if (!id || typeof id !== 'string') return;
+      if (id.startsWith(AVATAR_PREFIX)) {
         const rest = id.substring(AVATAR_PREFIX.length);
-        const tagId = rest.replace(/-(body|head)$/, '');
+        const tagId = rest.replace(/-(body|head|baseDisc)$/, '');
         onAvatarClick?.(tagId);
+        return;
+      }
+      const zoneMatch = id.match(/^zone-(\d+)-fill$/);
+      if (zoneMatch) {
+        const zoneId = Number(zoneMatch[1]);
+        const zone = zonesRef.current.find((z) => z.id === zoneId);
+        if (zone) onZoneClickRef.current?.(zone);
+        return;
+      }
+      // Elementos sintéticos nuestros (suelo grid, etc.) — ignorar.
+      if (id.startsWith('rtls-')) return;
+      // El resto = entity del modelo XKT. Sincronizamos con el TreeView:
+      // - Expande/scroll al nodo correspondiente
+      // - Highlight la entity en la escena (limpia previa antes)
+      try {
+        viewer.scene.setObjectsHighlighted(viewer.scene.highlightedObjectIds, false);
+        viewer.scene.setObjectsHighlighted([id], true);
+      } catch { /* ignore */ }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tree = (window as any).__rtlsTreeView;
+      if (tree?.showNode) {
+        try { tree.showNode(id); } catch { /* ignore */ }
+        setTimeout(() => {
+          const li = document.getElementById(`tree-0-${id}`);
+          if (li) {
+            try { li.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch { /* ignore */ }
+          }
+        }, 100);
       }
     });
 
@@ -332,11 +497,74 @@ export function PositioningViewer3D({
     };
     canvas.addEventListener('wheel', wheelHandler, { passive: false });
 
+    // Doble click sobre avatar → zoom in al operario sin activar follow.
+    // Mismo screen-space pick que el single-click handler — busca el avatar
+    // más cercano al cursor en pixels (radio PICK_RADIUS_PX).
+    const dblclickHandler = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const PICK_RADIUS_PX = 36;
+      let closestTagId: string | null = null;
+      let closestDist = Infinity;
+      const interpFn = getInterpolatedRef.current;
+      const cam = viewer.scene.camera;
+      if (!interpFn) return;
+      for (const tagId of avatarsRef.current.keys()) {
+        const interp = interpFn(tagId);
+        if (!interp) continue;
+        const s = avatarScaleRef.current || 1;
+        const bodyH = BODY_HEIGHT * s;
+        const headR = HEAD_RADIUS * s;
+        const wx = interp.x;
+        const wy = interp.z + bodyH * 0.5 + headR;
+        const wz = interp.y;
+        const v4 = math.vec4([wx, wy, wz, 1]);
+        const view = math.transformPoint4(cam.viewMatrix, v4, math.vec4());
+        const clip = math.transformPoint4(cam.projMatrix, view, math.vec4());
+        if (clip[3] <= 0) continue;
+        const ndcX = clip[0] / clip[3];
+        const ndcY = clip[1] / clip[3];
+        const sx = (ndcX + 1) * 0.5 * canvas.clientWidth;
+        const sy = (1 - ndcY) * 0.5 * canvas.clientHeight;
+        const d = Math.hypot(sx - cx, sy - cy);
+        if (d < closestDist) { closestDist = d; closestTagId = tagId; }
+      }
+      if (closestTagId && closestDist <= PICK_RADIUS_PX) {
+        flyToAvatar(closestTagId);
+        onAvatarDoubleClickRef.current?.(closestTagId);
+      }
+    };
+    canvas.addEventListener('dblclick', dblclickHandler);
+
+    // Helper compartido — fly-to a la posición actual del operario sin
+    // activar follow. Lo usan tanto el dblclick del canvas como el del
+    // pildora (vía ref guardada abajo).
+    const flyToAvatar = (tagId: string) => {
+      const interpFn = getInterpolatedRef.current;
+      if (!interpFn) return;
+      const interp = interpFn(tagId);
+      if (!interp) return;
+      const s = avatarScaleRef.current || 1;
+      const headTopY = interp.z + BODY_HEIGHT * s + HEAD_RADIUS * 2 * s;
+      const look = [interp.x, interp.z + BODY_HEIGHT * s * 0.5, interp.y] as [number, number, number];
+      // Eye: oblicuo desde arriba-atrás (NE), distancia ~25m. Mantiene
+      // proporción consistente independientemente del zoom previo.
+      const dist = 25;
+      const eye = [interp.x + dist * 0.6, headTopY + dist * 0.5, interp.y + dist * 0.6] as [number, number, number];
+      try {
+        viewer.cameraFlight.flyTo({ eye, look, up: [0, 1, 0], duration: 0.6 });
+      } catch { /* ignore */ }
+    };
+    flyToAvatarRef.current = flyToAvatar;
+
     return () => {
       canvas.removeEventListener('wheel', wheelHandler);
+      canvas.removeEventListener('dblclick', dblclickHandler);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       avatarsRef.current.clear();
       loadedLayersRef.current.clear();
+      loadedModelsRef.current.clear();
       cameraFramedRef.current = false;
       floorMeshRef.current = null;
       trailMeshRef.current = null;
@@ -345,6 +573,7 @@ export function PositioningViewer3D({
       viewerRef.current = null;
       xktLoaderRef.current = null;
       navCubeRef.current = null;
+      setViewerReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -369,26 +598,66 @@ export function PositioningViewer3D({
       }
     }
 
-    // Cargar las nuevas. Marcamos en el ref ANTES del load para que un
-    // re-render rápido (StrictMode, cambio de layersVisible, etc.) no
-    // dispare una segunda carga del mismo XKT.
+    // Dedup natural: el viewer.scene.models gestiona ids únicos, así
+    // usamos eso como guard (en lugar de un lock global compartido que
+    // antes causaba races con cargas asíncronas del cache).
     let cancelled = false;
     layers.forEach((layer: PlantViewLayer) => {
-      if (loadedLayersRef.current.has(layer.code)) return;
-      loadedLayersRef.current.add(layer.code);
+      if (viewer.scene.models[layer.code]) return;
 
-      console.warn(`[3D] Iniciando carga de layer "${layer.code}" desde ${layer.assetUrl}`);
-      const model = loader.load({
-        id: layer.code,
-        src: layer.assetUrl,
-        edges: true,
-      });
+      // Carga del XKT vía cache IndexedDB: en hot/cold reload posterior
+      // se sirve desde IDB en milisegundos. La primera vez hace fetch
+      // y cachea. El XKTLoaderPlugin recibe los bytes pre-cargados.
+      loadXktBytes(layer.assetUrl).then((xkt) => {
+        // Verificaciones al resolver: cancelado, viewer/loader cambiados,
+        // o ya cargado por otra instancia → abortar silenciosamente.
+        if (cancelled) return;
+        if (viewerRef.current !== viewer) return;
+        if (xktLoaderRef.current !== loader) return;
+        if (viewer.scene.models[layer.code]) return;
+
+        const model = loader.load({
+          id: layer.code,
+          xkt,
+          edges: true,
+        });
 
       model.on('loaded', () => {
-        if (cancelled) return;
+        // No usamos `cancelled` aquí: el cleanup del effect (re-render
+        // del padre) NO debe invalidar la inicialización del modelo
+        // recién cargado. Solo abortamos si el viewer cambió.
+        if (viewerRef.current !== viewer) return;
         model.visible = layer.defaultVisible;
-        console.warn(`[3D] Layer "${layer.code}" loaded`);
-        console.warn('[3D] model.aabb (minX,minY,minZ,maxX,maxY,maxZ):', Array.from(model.aabb));
+        // Registramos el modelo para que el effect del offset Y pueda
+        // moverlo en runtime cuando el user toca el slider.
+        loadedModelsRef.current.set(layer.code, model);
+        // CAPTURAR aabb ANTES de aplicar offset. El grid y la cámara
+        // inicial deben usar el aabb original (no el desplazado), porque
+        // si no, el grid baja con el modelo y la separación visual es 0
+        // — el modelo "vuelve a flotar".
+        const originalAabb = Array.from(model.aabb) as number[];
+        // Offset vertical inicial del modelo. Se lee de la ref (no del
+        // prop) para sobrevivir el race donde el modelo carga antes de
+        // que el padre haya hecho setState con el valor de BD. La ref se
+        // mantiene siempre actualizada con el último prop.
+        const currentYOffset = modelYOffsetRef.current;
+        if (typeof currentYOffset === 'number' && currentYOffset !== 0) {
+          model.position = [0, currentYOffset, 0];
+        }
+        // Restaurar visibilidad guardada por el usuario (per-user prefs en
+        // BD). Si el usuario cierra y reabre el visor, vuelve a tener
+        // ocultos los mismos nodos que dejó en su última sesión.
+        const currentPvId = plantViewIdRef.current;
+        if (currentPvId != null) {
+          userViewPrefsService.get(currentPvId).then((prefs) => {
+            const ids = prefs.hiddenNodeIds ?? [];
+            if (ids.length === 0) return;
+            const validIds = ids.filter((id) => viewer.scene.objects[id]);
+            if (validIds.length > 0) {
+              try { viewer.scene.setObjectsVisible(validIds, false); } catch { /* ignore */ }
+            }
+          }).catch(() => { /* ignore */ });
+        }
 
         // Rejilla de líneas como suelo de referencia (estilo Blender/Unity).
         // Probamos con plano sólido (Plane y Box, con y sin RTC) y siempre
@@ -398,7 +667,9 @@ export function PositioningViewer3D({
         // triángulos, así que el bug no aplica. Usamos `origin` igualmente
         // por buena práctica (RTC).
         if (!floorMeshRef.current) {
-          const aabb = model.aabb;
+          // Usamos originalAabb (capturado antes del offset) para que el
+          // grid quede a la altura original del modelo, no a la desplazada.
+          const aabb = originalAabb;
           const centerX = (aabb[0] + aabb[3]) / 2;
           const centerZ = (aabb[2] + aabb[5]) / 2;
           const modelMaxSize = Math.max(aabb[3] - aabb[0], aabb[5] - aabb[2]);
@@ -406,9 +677,10 @@ export function PositioningViewer3D({
           // pueda crearlos con RTC origin (mismo truco que la rejilla).
           modelCenterRef.current = [centerX, 0, centerZ];
           floorYRef.current = aabb[1];
-          // Rejilla 3x el modelo: el horizonte visible queda lejos y el
-          // skybox no se siente "pared cercana".
-          const gridSize = modelMaxSize * 3;
+          // Rejilla 1.4x el modelo — antes era 3x pero saturaba la
+          // pantalla con un suelo enorme alrededor de un edificio pequeño.
+          // Un margen del 40% queda natural y mantiene contexto.
+          const gridSize = modelMaxSize * 1.4;
           // ~8m por celda → cuadros grandes, sensación de escala industrial
           const divisions = Math.max(20, Math.round(gridSize / 8));
           // Al ras del modelo (no por debajo). Reduce gap visual
@@ -433,7 +705,7 @@ export function PositioningViewer3D({
             collidable: false,
           });
           floorMeshRef.current = floor;
-          console.warn(
+          console.log(
             '[3D] Grid suelo creado. origin=', [centerX, 0, centerZ],
             ' size=', gridSize, ' divisions=', divisions, ' floorY=', floorY,
           );
@@ -441,7 +713,29 @@ export function PositioningViewer3D({
 
         // Encuadrar SOLO al modelo, ignorando los avatares.
         if (!cameraFramedRef.current) {
-          viewer.cameraFlight.jumpTo({ aabb: model.aabb });
+          // Si hay vista guardada (capturada por el panel), úsala. Si
+          // no, calculamos un eye/look más cercano que el `flyTo(aabb)`
+          // por defecto (que aleja mucho la cámara según el FOV).
+          const savedEye = initialCameraEyeRef.current;
+          const savedLook = initialCameraLookRef.current;
+          if (savedEye && savedLook) {
+            viewer.cameraFlight.jumpTo({ eye: savedEye, look: savedLook, up: [0, 1, 0] });
+          } else {
+            // Cámara inicial referenciada al aabb original (no desplazado).
+            const aabb = originalAabb;
+            const cx = (aabb[0] + aabb[3]) / 2;
+            const cy = (aabb[1] + aabb[4]) / 2;
+            const cz = (aabb[2] + aabb[5]) / 2;
+            const sizeX = aabb[3] - aabb[0];
+            const sizeZ = aabb[5] - aabb[2];
+            const radius = Math.max(sizeX, sizeZ) * 0.7;
+            // Vista isométrica: cámara alta y desplazada 45º en planta.
+            viewer.cameraFlight.jumpTo({
+              eye: [cx + radius * 0.7, cy + radius * 0.8, cz + radius * 0.7],
+              look: [cx, cy, cz],
+              up: [0, 1, 0],
+            });
+          }
           cameraFramedRef.current = true;
         }
 
@@ -449,12 +743,18 @@ export function PositioningViewer3D({
         // está seteado y el modelo es visible.
         setModelReady(true);
       });
+      }).catch((err) => {
+        console.error(`[3D] Failed to load layer "${layer.code}":`, err);
+      });
     });
 
     return () => {
       cancelled = true;
     };
-  }, [layers]);
+    // viewerReady en deps garantiza re-trigger cuando el viewer se
+    // crea después de que layers ya esté memoizado (ver nota en el
+    // useState de viewerReady).
+  }, [layers, viewerReady]);
 
   // ---- Crear / refrescar meshes wireframe de las zonas ----
   // Cada zona se renderiza como un PRISMA WIREFRAME (líneas) — cilindro
@@ -531,13 +831,15 @@ export function PositioningViewer3D({
           alpha: 0.35,
           alphaMode: 'blend',
         }),
-        pickable: false,
+        // pickable=true para que el click sobre la zona dispare el
+        // modal de detalle (#52). collidable false para no estorbar al
+        // pick de avatares (que está siempre por encima visualmente).
+        pickable: true,
         collidable: false,
       });
 
       zoneMeshesRef.current.set(zone.id, { fill });
     }
-    console.warn('[3D] Zone meshes creados:', zoneMeshesRef.current.size);
 
     return () => {
       for (const pair of zoneMeshesRef.current.values()) {
@@ -585,17 +887,28 @@ export function PositioningViewer3D({
         if (!interp || !center || floorY == null) continue;
         const localX = interp.x - center[0];
         const localZ = interp.y - center[2];
-        const bodyCenterY = floorY + BODY_HEIGHT / 2;
-        const headCenterY = floorY + BODY_HEIGHT + HEAD_RADIUS;
+        // Multiplicador de tamaño leído desde el ref (config del panel).
+        const s = avatarScaleRef.current || 1;
+        const bodyHeight = BODY_HEIGHT * s;
+        const bodyRadius = BODY_RADIUS * s;
+        const headRadius = HEAD_RADIUS * s;
+        // Los pies del operario van a la `z` real del simulador (o del
+        // HW), no pegados al suelo del modelo. Así si z = suelo, se ve
+        // al suelo; si z está por encima, se ve subido. Reveal-time
+        // de errores de calibración del simulador, pero coherente con
+        // la altura que mostramos en el panel.
+        const feetY = interp.z;
+        const bodyCenterY = feetY + bodyHeight / 2;
+        const headCenterY = feetY + bodyHeight + headRadius;
         const color = QUALITY_COLOR[interp.quality];
         const emissive = color.map((c) => c * 0.3) as [number, number, number];
         const body = new Mesh(viewer.scene, {
           id: `${AVATAR_PREFIX}${tagId}-body`,
           origin: center,
           geometry: new ReadableGeometry(viewer.scene, buildCylinderGeometry({
-            radiusTop: BODY_RADIUS,
-            radiusBottom: BODY_RADIUS,
-            height: BODY_HEIGHT,
+            radiusTop: bodyRadius,
+            radiusBottom: bodyRadius,
+            height: bodyHeight,
             radialSegments: 20,
             heightSegments: 1,
             openEnded: false,
@@ -612,7 +925,7 @@ export function PositioningViewer3D({
           id: `${AVATAR_PREFIX}${tagId}-head`,
           origin: center,
           geometry: new ReadableGeometry(viewer.scene, buildSphereGeometry({
-            radius: HEAD_RADIUS,
+            radius: headRadius,
             heightSegments: 14,
             widthSegments: 18,
           })),
@@ -648,11 +961,16 @@ export function PositioningViewer3D({
             alpha: 0,
             alphaMode: 'blend',
           }),
-          position: [localX, floorY + BASE_DISC_THICKNESS / 2, localZ],
+          position: [localX, feetY + BASE_DISC_THICKNESS / 2, localZ],
           pickable: false,
           collidable: false,
         });
 
+        // (Hitbox cilíndrico eliminado — el pick contra el avatar lo
+        // hace el handler de mouseclicked en screen-space, comparando la
+        // proyección del centro del avatar contra la posición del click.
+        // Eso evita tener que dibujar un mesh invisible y es más fiable
+        // a distancias largas.)
         avatarsRef.current.set(tagId, { body, head, baseDisc });
       }
 
@@ -678,9 +996,13 @@ export function PositioningViewer3D({
         if (!figure || !interp || !center || floorY == null) continue;
         const localX = interp.x - center[0];
         const localZ = interp.y - center[2];
-        figure.body.position = [localX, floorY + BODY_HEIGHT / 2, localZ];
-        figure.head.position = [localX, floorY + BODY_HEIGHT + HEAD_RADIUS, localZ];
-        figure.baseDisc.position = [localX, floorY + BASE_DISC_THICKNESS / 2, localZ];
+        const s = avatarScaleRef.current || 1;
+        const bodyH = BODY_HEIGHT * s;
+        const headR = HEAD_RADIUS * s;
+        const feetY = interp.z;
+        figure.body.position = [localX, feetY + bodyH / 2, localZ];
+        figure.head.position = [localX, feetY + bodyH + headR, localZ];
+        figure.baseDisc.position = [localX, feetY + BASE_DISC_THICKNESS / 2, localZ];
 
         const proxFactor = proximityStream.factorByTag(tagId);
         const c = avatarColors(interp.quality, proxFactor, nowMs);
@@ -696,31 +1018,46 @@ export function PositioningViewer3D({
       }
 
       // ---- Camera-follow + trail del operario seguido ----
+      // Estrategia "delta-based": cada frame computamos cuánto se ha
+      // movido el worker y desplazamos eye+look la misma cantidad. Eso
+      // preserva el offset que el usuario ha elegido (orbit + zoom)
+      // mientras la cámara persigue al worker. Resultado: zoom y rotate
+      // funcionan como siempre, solo "engancha" la posición del look.
       const followSerial = followingSerialRef.current;
       if (followSerial) {
         const followInterp = getInterpolated(followSerial);
         if (followInterp && center && floorY != null) {
-          // Posición mundial del operario (cabeza-pecho).
           const tx = followInterp.x;
           const ty = floorY + BODY_HEIGHT / 2;
           const tz = followInterp.y;
-          // Cámara isométrica detrás-arriba con offset fijo. Ajustable
-          // a futuro si quieres que rote alrededor del worker.
-          const offX = 22, offY = 18, offZ = 22;
           const camCtl = viewer.scene.camera;
+
           if (cameraFlyToFollowRef.current) {
-            // Primer tick tras activar follow → fly suave.
+            // Primera activación → fly suave a vista isométrica detrás.
             cameraFlyToFollowRef.current = false;
+            const offX = 22, offY = 18, offZ = 22;
             viewer.cameraFlight.flyTo({
               eye: [tx + offX, ty + offY, tz + offZ],
               look: [tx, ty, tz],
               up: [0, 1, 0],
               duration: 0.6,
             });
+            lastFollowTargetRef.current = [tx, ty, tz];
           } else {
-            camCtl.eye = [tx + offX, ty + offY, tz + offZ];
-            camCtl.look = [tx, ty, tz];
-            camCtl.up = [0, 1, 0];
+            // Frames sucesivos → desplaza cámara por el delta del worker.
+            const last = lastFollowTargetRef.current;
+            if (last) {
+              const dx = tx - last[0];
+              const dy = ty - last[1];
+              const dz = tz - last[2];
+              if (dx !== 0 || dy !== 0 || dz !== 0) {
+                const eye = camCtl.eye;
+                const look = camCtl.look;
+                camCtl.eye = [eye[0] + dx, eye[1] + dy, eye[2] + dz];
+                camCtl.look = [look[0] + dx, look[1] + dy, look[2] + dz];
+              }
+            }
+            lastFollowTargetRef.current = [tx, ty, tz];
           }
 
           // Trail: añadimos posición actual al buffer y filtramos los
@@ -794,8 +1131,16 @@ export function PositioningViewer3D({
         // El label se ancla un poco encima de la cabeza del muñeco.
         // Y absoluta = suelo + altura figura + margen, no relativa a la
         // altura publicada por el simulador.
+        // Label justo encima del muñequito ESCALADO. La altura del
+        // avatar cambia con avatarHeightM, así que calculamos el offset
+        // dinámicamente con avatarScaleRef + margen pequeño (0.3 m).
+        const s = avatarScaleRef.current || 1;
+        const dynamicLabelOffset = NATURAL_AVATAR_HEIGHT * s + 0.3;
         worldVec4[0] = interp.x;
-        worldVec4[1] = (floorY ?? interp.z) + LABEL_Y_OFFSET;
+        // La pildora ahora se ancla sobre la cabeza del avatar, cuyo
+        // suelo es `interp.z` (la altura real del operario), no el
+        // suelo del modelo. Así sigue al operario si está subido.
+        worldVec4[1] = interp.z + dynamicLabelOffset;
         worldVec4[2] = interp.y;
         worldVec4[3] = 1;
         math.transformPoint4(cam.viewMatrix, worldVec4, viewVec4);
@@ -812,7 +1157,9 @@ export function PositioningViewer3D({
         labelEl.style.display = 'flex';
         const selected = labelEl.dataset.rtlsSelected === 'true';
         const scale = selected ? ' scale(1.08)' : '';
-        labelEl.style.transform = `translate(-50%, -100%) translate(${sx}px, ${sy}px)${scale}`;
+        // -8px en Y para que el ápice del pico (que sobresale 8px bajo
+        // la pildora) toque exactamente el punto del avatar en pantalla.
+        labelEl.style.transform = `translate(-50%, -100%) translate(${sx}px, ${sy - 8}px)${scale}`;
         // Color del círculo de iniciales: SIEMPRE el color base por
         // companyType (verde/azul/gris). La alarma de proximity se
         // refleja solo en el fondo de la pill — duplicar el cambio en el
@@ -837,15 +1184,18 @@ export function PositioningViewer3D({
         const pf = proximityStream.factorByTag(tagId);
         const nameEl = labelEl.querySelector('[data-rtls-name]') as HTMLElement | null;
         const subEl = labelEl.querySelector('[data-rtls-sub]') as HTMLElement | null;
+        const arrowEl = labelEl.querySelector('[data-rtls-arrow]') as HTMLElement | null;
         const selectionPrefix = selected
           ? '0 0 0 2px #34c759, 0 0 14px rgba(52,199,89,0.5), '
           : '';
+        let arrowColor = 'rgba(255, 255, 255, 0.92)';
         if (pf <= 0) {
           labelEl.style.background = 'rgba(255, 255, 255, 0.92)';
           labelEl.style.boxShadow = selectionPrefix
             + '0 2px 6px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.04)';
           if (nameEl) nameEl.style.color = '#1a1f2c';
           if (subEl) subEl.style.color = '#5a6273';
+          arrowColor = 'rgba(255, 255, 255, 0.92)';
         } else if (pf >= 1.0) {
           const pulse = 0.5 + 0.5 * Math.sin(nowMs * 0.0094);
           const glow = 8 + 14 * pulse;
@@ -854,6 +1204,7 @@ export function PositioningViewer3D({
             + `0 0 ${glow.toFixed(1)}px rgba(230, 57, 57, 0.85), 0 2px 6px rgba(0,0,0,0.3)`;
           if (nameEl) nameEl.style.color = '#fff';
           if (subEl) subEl.style.color = 'rgba(255,255,255,0.85)';
+          arrowColor = 'rgba(230, 57, 57, 0.96)';
         } else {
           const alpha = (0.65 + 0.30 * pf).toFixed(3);
           labelEl.style.background = `rgba(245, 158, 11, ${alpha})`;
@@ -861,6 +1212,10 @@ export function PositioningViewer3D({
             + '0 2px 8px rgba(245,158,11,0.45), 0 0 0 1px rgba(0,0,0,0.04)';
           if (nameEl) nameEl.style.color = '#fff';
           if (subEl) subEl.style.color = 'rgba(255,255,255,0.85)';
+          arrowColor = `rgba(245, 158, 11, ${alpha})`;
+        }
+        if (arrowEl && arrowEl.style.borderTopColor !== arrowColor) {
+          arrowEl.style.borderTopColor = arrowColor;
         }
       }
 
@@ -917,6 +1272,7 @@ export function PositioningViewer3D({
         const companyName = tag?.assignedWorkerCompanyName ?? null;
         const companyType = tag?.assignedWorkerCompanyType ?? null;
         const isSelected = selectedSerial === tagId;
+        const isFollowing = followingSerial === tagId;
         const initials = workerName
           ? workerName
               .split(/\s+/)
@@ -948,6 +1304,11 @@ export function PositioningViewer3D({
               else labelRefsMap.current.delete(tagId);
             }}
             onClick={() => onAvatarClick?.(tagId)}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              flyToAvatarRef.current?.(tagId);
+              onAvatarDoubleClick?.(tagId);
+            }}
             data-rtls-selected={isSelected ? 'true' : 'false'}
             style={{
               position: 'absolute',
@@ -1024,18 +1385,79 @@ export function PositioningViewer3D({
                 {sub}
               </div>
             </div>
+            {/* Pico/protuberancia triangular bajo la pildora apuntando al
+                muñequito. Útil cuando la cabeza queda oculta tras una
+                pared o el zoom es alejado: el ápice del triángulo marca
+                la posición exacta del operario. El color se sincroniza
+                con el fondo de la pill en el tick para reflejar el
+                estado (normal/aproximando/dentro de zona crítica). */}
+            <div
+              data-rtls-arrow
+              style={{
+                position: 'absolute',
+                left: '50%',
+                bottom: -7,
+                transform: 'translateX(-50%)',
+                width: 0,
+                height: 0,
+                borderLeft: '7px solid transparent',
+                borderRight: '7px solid transparent',
+                borderTop: '8px solid rgba(255, 255, 255, 0.92)',
+                filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.18))',
+                pointerEvents: 'none',
+              }}
+            />
+            {/* Badge "ojo" cuando este operario está siendo seguido por la
+                cámara. Se mantiene aunque el panel lateral esté cerrado —
+                señal persistente de que la cámara está enganchada a este
+                tag hasta que el usuario lo des-active explícitamente. */}
+            {isFollowing && (
+              <div
+                title="Cámara siguiendo a este operario"
+                style={{
+                  position: 'absolute',
+                  top: -10,
+                  right: -10,
+                  width: 22,
+                  height: 22,
+                  borderRadius: '50%',
+                  background: '#34c759',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 14,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.25), 0 0 0 2px #fff',
+                  pointerEvents: 'none',
+                }}
+              >
+                {/* SVG ojo abierto — Material-style sin importar el iconpack. */}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5C21.27 7.61 17 4.5 12 4.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+                </svg>
+              </div>
+            )}
           </div>
         );
       })}
-      {!plantView && (
+      {/* Overlay de carga: cubre el visor mientras se descarga la
+          plant-view, se carga el XKT (cache miss = ~10s con red lenta;
+          parsing/upload-GPU = 5-10s siempre) o se construye la escena.
+          Desaparece cuando `modelReady` (model.on('loaded') ya disparó). */}
+      {(!plantView || !modelReady) && (
         <Box
           sx={{
             position: 'absolute', inset: 0, display: 'flex',
             alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(255,255,255,0.6)',
+            flexDirection: 'column', gap: 2,
+            background: 'rgba(255,255,255,0.85)',
+            zIndex: 5,
           }}
         >
           <CircularProgress />
+          <Box sx={{ fontSize: 13, color: 'text.secondary' }}>
+            {!plantView ? 'Cargando vista de planta…' : 'Cargando modelo 3D…'}
+          </Box>
         </Box>
       )}
     </Box>

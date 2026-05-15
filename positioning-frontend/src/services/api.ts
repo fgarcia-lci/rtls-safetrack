@@ -22,14 +22,16 @@ api.interceptors.request.use((cfg) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Si el token caducó y el AuthContext no lo refrescó a tiempo, redirigimos a login.
+    // Si el token caducó y el AuthContext no lo refrescó a tiempo,
+    // redirigimos a login con el flag para que la pantalla muestre el
+    // mensaje "sesión caducada, vuelve a iniciar sesión".
     if (error?.response?.status === 401) {
       console.warn('[api] 401 received; clearing auth and redirecting to /login');
       localStorage.removeItem(ACCESS_TOKEN_KEY);
       localStorage.removeItem('safetrack_refresh_token');
       localStorage.removeItem('safetrack_user_info');
       if (window.location.pathname !== '/login' && window.location.pathname !== '/callback') {
-        window.location.href = '/login';
+        window.location.href = '/login?sessionExpired=1';
       }
     }
     return Promise.reject(error);

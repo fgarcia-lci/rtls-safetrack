@@ -4,7 +4,7 @@
 // con su color real. Sin operarios, sin alertas, sin proximity stream —
 // el contexto suficiente para que el usuario sepa dónde está colocando
 // la zona dentro de la planta.
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Viewer,
   XKTLoaderPlugin,
@@ -17,7 +17,8 @@ import {
   PhongMaterial,
   math,
 } from '@xeokit/xeokit-sdk';
-import { Box } from '@mui/material';
+import { Box, CircularProgress, Typography } from '@mui/material';
+import { loadXktBytes } from '../../utils/xktCache';
 import type { PlantView, PlantViewLayer } from '../Live/types';
 import type { SafetyZone } from '../../types/zones';
 
@@ -110,16 +111,35 @@ export function ZoneEditor3DView({ plantView, otherZones, draftZone, onModelLoad
 
   const layers = useMemo(() => plantView?.layers ?? [], [plantView]);
 
+  // Señal de "viewer listo" (creado y refs poblados). El effect de
+  // carga de layers depende de ESTE state además de `layers`. Sin él,
+  // si el primer render trae ya `layers` poblado (navegación SPA con
+  // plantView pre-cargado por el padre), el effect de layers podía
+  // correr antes que el de "crear viewer", hacer early return por
+  // refs nulas, y nunca volver a ejecutarse porque `layers` no cambia
+  // de referencia. Con viewerReady forzamos un re-trigger garantizado.
+  const [viewerReady, setViewerReady] = useState(false);
+  // Para el spinner de carga del modelo. Pasa a true cuando el XKT
+  // termina de parsear y el suelo está creado.
+  const [modelReady, setModelReady] = useState(false);
+
   // ---- Crear viewer ----
   useEffect(() => {
     if (!canvasRef.current) return;
     const viewer = new Viewer({
       canvasElement: canvasRef.current,
       transparent: true,
-      logarithmicDepthBufferEnabled: true,
+      // logarithmicDepthBufferEnabled OFF on purpose: with it enabled and the
+      // viewer recreated after SPA navigation we hit a continuous
+      // `glDrawElements: Insufficient buffer size` and floor/zones never paint.
+      // The model itself paints fine without it at our scales (~6000 units).
     });
     viewerRef.current = viewer;
     xktLoaderRef.current = new XKTLoaderPlugin(viewer);
+    // Expone el viewer del editor en window para diagnóstico desde la
+    // consola del navegador (ej. inspeccionar viewer.scene.objects).
+    (window as unknown as { __rtlsZoneEditorViewer?: Viewer }).__rtlsZoneEditorViewer = viewer;
+    setViewerReady(true);
 
     // NavCube en esquina superior derecha — orientación rápida.
     if (navCubeCanvasRef.current) {
@@ -136,6 +156,38 @@ export function ZoneEditor3DView({ plantView, otherZones, draftZone, onModelLoad
     const canvas = canvasRef.current;
     const wheelHandler = (e: WheelEvent) => e.preventDefault();
     canvas.addEventListener('wheel', wheelHandler, { passive: false });
+
+    // Click sobre un mesh del modelo XKT → sincroniza con TreeView
+    // (mismo patrón que en Live). Ignora suelo y meshes de zona porque
+    // esos los gestiona el drag handler propio del editor.
+    viewer.scene.input.on('mouseclicked', (coords: number[]) => {
+      const hit = viewer.scene.pick({ canvasPos: coords as [number, number] });
+      const id = hit?.entity?.id as string | undefined;
+      if (!id || typeof id !== 'string') return;
+      // Elementos sintéticos nuestros — ignorar.
+      if (id.startsWith('rtls-')) return;
+      if (id.startsWith('editor-zone-')) return;
+      // Resto = entity del modelo XKT. Highlight + showNode.
+      try {
+        viewer.scene.setObjectsHighlighted(viewer.scene.highlightedObjectIds, false);
+        viewer.scene.setObjectsHighlighted([id], true);
+      } catch { /* ignore */ }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tree = (window as any).__rtlsTreeView;
+      if (tree?.showNode) {
+        try { tree.showNode(id); } catch { /* ignore */ }
+        // El plugin marca el nodo con clase `highlighted-node` y expande
+        // sus ancestros, pero NO siempre hace scroll hasta él cuando el
+        // árbol es grande. Hacemos scrollIntoView explícito tras 100ms
+        // (deja tiempo a que el plugin termine de re-pintar).
+        setTimeout(() => {
+          const li = document.getElementById(`tree-0-${id}`);
+          if (li) {
+            try { li.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch { /* ignore */ }
+          }
+        }, 100);
+      }
+    });
 
     // Drag interactivo. Click+drag sobre la zona la mueve en el plano
     // horizontal. El cursor queda anclado al punto exacto donde se hizo
@@ -334,36 +386,58 @@ export function ZoneEditor3DView({ plantView, otherZones, draftZone, onModelLoad
       viewerRef.current = null;
       xktLoaderRef.current = null;
       navCubeRef.current = null;
+      setViewerReady(false);
+      setModelReady(false);
     };
   }, []);
 
   // ---- Cargar layers XKT ----
+  // Robustez: capturamos viewer/loader al inicio del effect. Cuando la
+  // promesa de loadXktBytes resuelve, comprobamos que (a) el effect no
+  // fue cancelado, (b) el viewer/loader siguen siendo el ACTUAL (no se
+  // destruyeron por re-mount), (c) el modelo no fue ya cargado por otra
+  // instancia del effect. Sin lock global compartido — antes
+  // `loadedLayersRef` causaba races: la segunda instancia del effect
+  // veía el lock puesto por la primera, no cargaba, y al cancelarse la
+  // primera el lock quedaba en estado inconsistente.
   useEffect(() => {
     const viewer = viewerRef.current;
     const loader = xktLoaderRef.current;
     if (!viewer || !loader || layers.length === 0) return;
 
-    let cancelled = false;
-    layers.forEach((layer: PlantViewLayer) => {
-      if (loadedLayersRef.current.has(layer.code)) return;
-      loadedLayersRef.current.add(layer.code);
-
-      const model = loader.load({ id: layer.code, src: layer.assetUrl, edges: true });
-      model.on('loaded', () => {
-        if (cancelled) return;
+    // Setup que se ejecuta una vez el modelo está cargado en escena.
+    // Se llama en 3 puntos: (a) modelo ya estaba en scene al entrar al
+    // effect, (b) cache hit + modelo ya estaba antes de loader.load,
+    // (c) loader.load + on('loaded') tras carga real.
+    const runSetupOnLoadedModel = (
+      model: ReturnType<typeof loader.load>,
+      layer: PlantViewLayer,
+    ) => {
+      if (viewerRef.current !== viewer) return;
+      try {
         model.visible = layer.defaultVisible;
+        // Capturar aabb ORIGINAL antes de aplicar offset. Si no, el
+        // grid baja con el modelo y queda pegado a las zapatas otra vez.
+        const originalAabb = Array.from(model.aabb) as number[];
+        // Aplica el offset Y de calibración (BD, columna default_y_offset
+        // de pos_plant_views — editable solo por ADMIN desde /live). Así
+        // las zonas editadas aquí se alinean con el modelo "bajado".
+        const yOffset = plantView?.defaultYOffset;
+        if (typeof yOffset === 'number' && yOffset !== 0) {
+          model.position = [0, yOffset, 0];
+        }
 
-        // Centro del modelo + rejilla suelo.
         if (!floorMeshRef.current) {
-          const aabb = model.aabb;
+          const aabb = originalAabb;
           const centerX = (aabb[0] + aabb[3]) / 2;
           const centerZ = (aabb[2] + aabb[5]) / 2;
           modelCenterRef.current = [centerX, 0, centerZ];
 
           const modelMaxSize = Math.max(aabb[3] - aabb[0], aabb[5] - aabb[2]);
-          const gridSize = modelMaxSize * 3;
+          const gridSize = modelMaxSize * 1.4;
           const divisions = Math.max(20, Math.round(gridSize / 8));
           const floorY = aabb[1];
+
           const floor = new Mesh(viewer.scene, {
             id: 'rtls-floor-grid',
             origin: [centerX, 0, centerZ],
@@ -382,19 +456,75 @@ export function ZoneEditor3DView({ plantView, otherZones, draftZone, onModelLoad
           floorMeshRef.current = floor;
 
           if (!cameraFramedRef.current) {
-            viewer.cameraFlight.jumpTo({ aabb: model.aabb });
+            // Vista cenital para edición — la cámara mira desde arriba
+            // hacia el centro del modelo. Esto deja las zonas y el grid
+            // claramente visibles, evitando que paredes/tejado del XKT
+            // las oculten desde una vista lateral.
+            const sizeX = aabb[3] - aabb[0];
+            const sizeZ = aabb[5] - aabb[2];
+            const maxXZ = Math.max(sizeX, sizeZ);
+            // Altura suficiente para ver todo el modelo cómodamente.
+            const camY = aabb[4] + maxXZ * 0.7;
+            viewer.cameraFlight.jumpTo({
+              eye: [centerX, camY, centerZ + 1], // +1 en Z para no quedar exactamente en gimbal lock
+              look: [centerX, aabb[1], centerZ],
+              up: [0, 0, -1], // norte hacia adelante (planta convencional)
+            });
             cameraFramedRef.current = true;
           }
           onModelLoadedRef.current?.(Array.from(model.aabb));
         }
+        setModelReady(true);
+        // Forzar redraw — xeokit puede tener invalidación lazy y no
+        // repintar tras crear las meshes hasta que pase algo.
+        try {
+        viewer.scene.glRedraw();
+        viewer.scene.render(true);
+      } catch { /* ignore */ }
+      } catch (err) {
+        console.error('[ZE3D] runSetup THREW', err);
+      }
+    };
+
+    let cancelled = false;
+    layers.forEach((layer: PlantViewLayer) => {
+      const existingModel = viewer.scene.models[layer.code];
+
+      if (existingModel) {
+        runSetupOnLoadedModel(existingModel as ReturnType<typeof loader.load>, layer);
+        return;
+      }
+
+      loadXktBytes(layer.assetUrl).then((xkt) => {
+        if (cancelled) return;
+        if (viewerRef.current !== viewer) return;
+        if (xktLoaderRef.current !== loader) return;
+        const already = viewer.scene.models[layer.code];
+        if (already) {
+          runSetupOnLoadedModel(already as ReturnType<typeof loader.load>, layer);
+          return;
+        }
+        // Pass a FRESH copy of the bytes to xeokit. The same ArrayBuffer
+        // came out of IDB and may have been used by the Live viewer
+        // earlier; xeokit's loader can detach/neutralize the buffer it
+        // receives, which produces a continuous
+        // `glDrawElements: Insufficient buffer size` in the editor's
+        // new viewer. slice(0) gives us an independent copy.
+        const xktCopy = xkt.slice(0);
+        const model = loader.load({ id: layer.code, xkt: xktCopy, edges: true });
+        model.on('loaded', () => runSetupOnLoadedModel(model, layer));
+      }).catch((err) => {
+        console.error(`[ZoneEditor3D] Failed to load layer "${layer.code}":`, err);
       });
     });
 
     return () => { cancelled = true; };
-    // Solo `layers` debe disparar reload — el callback va por ref para
-    // evitar el race condition con `cancelled`.
+    // Deps: layers + viewerReady. El callback va por ref para evitar
+    // re-triggers no deseados. Sin viewerReady, si el primer render
+    // trae layers ya poblado, este effect podía correr antes que
+    // el de creación del viewer y hacer early return permanente.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layers]);
+  }, [layers, viewerReady]);
 
   // ---- Pintar otras zonas (existentes) en gris ----
   useEffect(() => {
@@ -402,20 +532,34 @@ export function ZoneEditor3DView({ plantView, otherZones, draftZone, onModelLoad
     const center = modelCenterRef.current;
     if (!viewer || !center) return;
 
-    // Limpiar previos.
-    for (const m of otherZoneMeshesRef.current.values()) {
-      try { m.destroy(); } catch { /* ignore */ }
-    }
-    otherZoneMeshesRef.current.clear();
+    // Defer al siguiente frame. Si llegamos aquí justo después de que
+    // xeokit cargase el modelo XKT (cache hit instantáneo en navegación
+    // SPA), sus buffers internos pueden no estar listos para nuevas
+    // meshes — el resultado es que las meshes se crean pero no se
+    // renderizan hasta que el usuario hace algo que invalide cache GPU
+    // (hard reload). Diferir un frame da tiempo a xeokit a reconciliar.
+    const rafId = requestAnimationFrame(() => {
+      // Limpiar previos.
+      for (const m of otherZoneMeshesRef.current.values()) {
+        try { m.destroy(); } catch { /* ignore */ }
+      }
+      otherZoneMeshesRef.current.clear();
 
-    for (const zone of otherZones) {
-      const polygon = zone.polygon2d;
-      if (!polygon || polygon.length < 3) continue;
-      const mesh = buildPrismMesh(viewer, center, polygon, zone.zMin, zone.zMax,
-        `editor-zone-${zone.id}`, [0.55, 0.58, 0.62], 0.18);
-      otherZoneMeshesRef.current.set(zone.id, mesh);
-    }
+      for (const zone of otherZones) {
+        const polygon = zone.polygon2d;
+        if (!polygon || polygon.length < 3) continue;
+        const mesh = buildPrismMesh(viewer, center, polygon, zone.zMin, zone.zMax,
+          `editor-zone-${zone.id}`, [0.55, 0.58, 0.62], 0.18);
+        otherZoneMeshesRef.current.set(zone.id, mesh);
+      }
+      // Forzar redraw — xeokit puede tener invalidación lazy
+      try {
+        viewer.scene.glRedraw();
+        viewer.scene.render(true);
+      } catch { /* ignore */ }
+    });
     return () => {
+      cancelAnimationFrame(rafId);
       for (const m of otherZoneMeshesRef.current.values()) {
         try { m.destroy(); } catch { /* ignore */ }
       }
@@ -423,7 +567,12 @@ export function ZoneEditor3DView({ plantView, otherZones, draftZone, onModelLoad
     };
     // Re-run cuando cambian las zonas o cuando el modelo termina de cargar.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [otherZones, modelCenterRef.current]);
+    // modelReady (state reactivo) en lugar de modelCenterRef.current
+    // (ref que NO triggerea re-runs). Sin él, si otherZones llega antes
+    // que el modelo, este effect corre con center=null, hace early
+    // return, y nunca vuelve a ejecutarse.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otherZones, modelReady]);
 
   // ---- Pintar/actualizar draft zone ----
   useEffect(() => {
@@ -516,7 +665,10 @@ export function ZoneEditor3DView({ plantView, otherZones, draftZone, onModelLoad
       yArrowRef.current = node;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftZone, modelCenterRef.current]);
+    // Mismo fix que en otherZones: modelReady reactivo en lugar de
+    // modelCenterRef.current.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftZone, modelReady]);
 
   return (
     <Box sx={{
@@ -548,6 +700,29 @@ export function ZoneEditor3DView({ plantView, otherZones, draftZone, onModelLoad
           pointerEvents: 'auto',
         }}
       />
+      {/* Spinner de carga del modelo. Cubre el canvas mientras el XKT
+          se descarga + parsea + sube a GPU. Desaparece al primer
+          model.on('loaded'). */}
+      {!modelReady && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2,
+            background: 'rgba(255,255,255,0.85)',
+            zIndex: 5,
+          }}
+        >
+          <CircularProgress />
+          <Typography variant="body2" color="text.secondary">
+            Cargando modelo 3D…
+          </Typography>
+        </Box>
+      )}
     </Box>
   );
 }
@@ -566,20 +741,31 @@ function buildPrismMesh(
   pickable = false,
 ): Mesh {
   const n = polygon.length;
-  const positions: number[] = [];
+  // Use typed arrays so xeokit picks GL types deterministically.
+  // Passing plain number[] sometimes ends in a buffer/draw-type mismatch
+  // (`glDrawElements: Insufficient buffer size`) after viewer recreation.
+  const positions = new Float32Array(n * 2 * 3);
+  let pIdx = 0;
   for (const [px, py] of polygon) {
-    positions.push(px - center[0], zMin, py - center[2]);
+    positions[pIdx++] = px - center[0];
+    positions[pIdx++] = zMin;
+    positions[pIdx++] = py - center[2];
   }
   for (const [px, py] of polygon) {
-    positions.push(px - center[0], zMax, py - center[2]);
+    positions[pIdx++] = px - center[0];
+    positions[pIdx++] = zMax;
+    positions[pIdx++] = py - center[2];
   }
-  const indices: number[] = [];
+  const numIndices = n * 6 + (n - 2) * 3 * 2;
+  const indices = new Uint32Array(numIndices);
+  let k = 0;
   for (let i = 0; i < n; i++) {
     const i2 = (i + 1) % n;
-    indices.push(i, i2, n + i2, i, n + i2, n + i);
+    indices[k++] = i; indices[k++] = i2; indices[k++] = n + i2;
+    indices[k++] = i; indices[k++] = n + i2; indices[k++] = n + i;
   }
-  for (let i = 1; i < n - 1; i++) indices.push(n, n + i, n + i + 1);
-  for (let i = 1; i < n - 1; i++) indices.push(0, i + 1, i);
+  for (let i = 1; i < n - 1; i++) { indices[k++] = n; indices[k++] = n + i; indices[k++] = n + i + 1; }
+  for (let i = 1; i < n - 1; i++) { indices[k++] = 0; indices[k++] = i + 1; indices[k++] = i; }
 
   return new Mesh(viewer.scene, {
     id: meshId,

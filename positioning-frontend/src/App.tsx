@@ -7,7 +7,9 @@ import { MainLayout } from './components/Layout/MainLayout';
 import { Login } from './pages/Login/Login';
 import { Callback } from './pages/Callback/Callback';
 import { Dashboard } from './pages/Dashboard/Dashboard';
-import { Live } from './pages/Live/Live';
+// Live NO se importa aquí: vive persistente dentro de MainLayout (keep-alive
+// para no recargar el modelo xeokit en cada navegación). La ruta /live
+// existe en el Routes con element={null} para que el path sea válido.
 import { Workers } from './pages/Workers/Workers';
 import { Tags } from './pages/Tags/Tags';
 import { Zones } from './pages/Zones/Zones';
@@ -33,7 +35,7 @@ function App() {
               }
             >
               <Route index element={<Dashboard />} />
-              <Route path="live" element={<Live />} />
+              <Route path="live" element={null} />
               <Route path="workers" element={<Workers />} />
               <Route path="tags" element={<Tags />} />
               <Route path="zones" element={<Zones />} />

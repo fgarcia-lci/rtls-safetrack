@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -45,7 +46,15 @@ public class ProximityNotificationDispatcher {
 
     /**
      * Disparado por {@code ZoneEngineService} cuando un tag ENTRA en una zona.
+     *
+     * <p>Transactional: el {@link Tag#getAssignedWorker()} es lazy y al
+     * acceder a sus propiedades (company, role, photo...) en
+     * {@link #buildAlert} Hibernate necesita la sesión abierta. Sin esto
+     * obtenemos {@code LazyInitializationException}, la excepción se
+     * propaga al engine, el push WS nunca se envía y el frontend solo
+     * "ve" la alerta tras un F5 (que dispara el snapshot REST).
      */
+    @Transactional(readOnly = true)
     public void onEnter(ProximityEvent event, SafetyZone zone) {
         ZoneNotificationPolicy policy = resolvePolicy(zone.getId());
         Tag tag = tagRepo.findById(event.getTagId()).orElse(null);
@@ -81,6 +90,7 @@ public class ProximityNotificationDispatcher {
     /**
      * Disparado por {@code ZoneEngineService} cuando un tag SALE de una zona.
      */
+    @Transactional(readOnly = true)
     public void onExit(ProximityEvent event, SafetyZone zone) {
         long secs = (event.getEnteredAt() != null && event.getExitedAt() != null)
                 ? Duration.between(event.getEnteredAt(), event.getExitedAt()).toSeconds()
@@ -132,8 +142,13 @@ public class ProximityNotificationDispatcher {
                 state,
                 Instant.now(),
                 tag.getSerial(),
+                worker != null ? worker.getId() : null,
                 worker != null ? worker.getFullName() : null,
                 worker != null ? worker.getEmployeeCode() : null,
+                worker != null ? worker.getPhotoUrl() : null,
+                worker != null ? worker.getCompanyName() : null,
+                worker != null ? worker.getCompanyType() : null,
+                worker != null ? worker.getRoleInPlant() : null,
                 zone.getId(),
                 zone.getCode(),
                 zone.getName(),

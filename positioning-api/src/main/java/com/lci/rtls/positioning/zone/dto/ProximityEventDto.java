@@ -1,6 +1,7 @@
 package com.lci.rtls.positioning.zone.dto;
 
 import com.lci.rtls.positioning.tag.Tag;
+import com.lci.rtls.positioning.worker.CompanyType;
 import com.lci.rtls.positioning.worker.Worker;
 import com.lci.rtls.positioning.zone.ProximityEvent;
 import com.lci.rtls.positioning.zone.SafetyZone;
@@ -18,6 +19,14 @@ public record ProximityEventDto(
         Long workerId,
         String workerName,
         String workerCode,
+        // Datos enriquecidos del worker para que el frontend (drawer de
+        // alertas / banner / app móvil) renderice contexto completo sin
+        // hacer una segunda query. Coste mínimo: el Worker ya está
+        // cargado en {@code from(...)} para resolver el nombre.
+        String workerPhotoUrl,
+        String workerCompanyName,
+        CompanyType workerCompanyType,
+        String workerRoleInPlant,
         Long tagId,
         String tagSerial,
         Long zoneId,
@@ -42,6 +51,10 @@ public record ProximityEventDto(
                 e.getWorkerId(),
                 worker != null ? worker.getFullName() : null,
                 worker != null ? worker.getEmployeeCode() : null,
+                worker != null ? worker.getPhotoUrl() : null,
+                worker != null ? worker.getCompanyName() : null,
+                worker != null ? worker.getCompanyType() : null,
+                worker != null ? worker.getRoleInPlant() : null,
                 e.getTagId(),
                 tag != null ? tag.getSerial() : null,
                 e.getZoneId(),

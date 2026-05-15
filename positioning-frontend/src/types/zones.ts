@@ -54,14 +54,21 @@ export interface ProximityBatch {
 export type AlertEventKind = 'ENTER' | 'EXIT';
 export type AlertState = 'OPEN' | 'CLOSED';
 
+export type CompanyType = 'INTERNAL' | 'CONTRACTOR' | 'VISITOR';
+
 export interface AlertNotification {
   eventId: number;
   kind: AlertEventKind;
   state: AlertState;
   ts: string;
   tagSerial: string;
+  workerId?: number | null;
   workerName?: string | null;
   workerCode?: string | null;
+  workerPhotoUrl?: string | null;
+  workerCompanyName?: string | null;
+  workerCompanyType?: CompanyType | null;
+  workerRoleInPlant?: string | null;
   zoneId: number;
   zoneCode: string;
   zoneName: string;
@@ -77,6 +84,10 @@ export interface ProximityEvent {
   workerId?: number | null;
   workerName?: string | null;
   workerCode?: string | null;
+  workerPhotoUrl?: string | null;
+  workerCompanyName?: string | null;
+  workerCompanyType?: CompanyType | null;
+  workerRoleInPlant?: string | null;
   tagId: number;
   tagSerial?: string | null;
   zoneId: number;

@@ -15,7 +15,10 @@
     "no": "No",
     "confirm": "Confirmar",
     "active": "Activo",
-    "inactive": "Inactivo"
+    "inactive": "Inactivo",
+    "refresh": "Refrescar ahora",
+    "updatedAt": "Actualizado:",
+    "viewIn3D": "Ver en 3D"
   },
   "auth": {
     "login": "Iniciar sesión",
@@ -57,12 +60,40 @@
     "redirecting": "Redirigiendo al inicio de sesión...",
     "logoutSuccess": "Has cerrado sesión correctamente",
     "logoutSuccessDetail": "Redirigiendo al inicio de sesión...",
+    "sessionExpired": "Su sesión ha caducado. Por favor, vuelva a iniciar sesión con sus credenciales.",
     "error": {
       "credentials": "Credenciales no válidas",
       "locked": "Tu cuenta está bloqueada",
       "expired": "Tu sesión ha caducado",
       "generic": "Error de autenticación"
     }
+  },
+  "session": {
+    "warningTitle": "Su sesión está a punto de caducar",
+    "warningMessage": "La sesión va a finalizar en menos de un minuto. ¿Desea continuar?",
+    "warningError": "No se pudo renovar la sesión. Cierre sesión y vuelva a iniciar.",
+    "continueButton": "Continuar sesión",
+    "renewing": "Renovando…",
+    "logout": "Cerrar sesión"
+  },
+  "dashboard": {
+    "loadError": "Error cargando el resumen del dashboard",
+    "kpis": {
+      "workersOnsite": "Operarios en planta",
+      "alertsToday": "Alertas hoy",
+      "sosActive": "SOS activos",
+      "mttr": "MTTR (tiempo medio ACK)",
+      "lowBatteryTags": "Tags batería baja",
+      "assignedTags": "Tags asignados",
+      "companiesOnsite": "Empresas presentes",
+      "workersWithoutTag": "Operarios sin tag"
+    },
+    "topZones": "Top zonas conflictivas (hoy)",
+    "topWorkers": "Operarios con más incidencias (hoy)",
+    "companiesPresent": "Empresas presentes en planta ahora",
+    "noZoneEvents": "Sin eventos en zonas hoy. Todo en orden.",
+    "noWorkerEvents": "Ningún operario ha provocado eventos hoy.",
+    "noActiveWorkers": "Sin operarios activos."
   },
   "workers": {
     "searchPlaceholder": "Buscar por nombre, código o empresa...",
@@ -167,6 +198,170 @@
     "assignedWorker": "Trabajador asignado",
     "unassigned": "Sin asignar",
     "tagNotFound": "Tag no encontrado",
-    "noView": "No hay vista 3D configurada para esta planta"
+    "noView": "No hay vista 3D configurada para esta planta",
+    "follow": "Seguir en 3D",
+    "unfollow": "Dejar de seguir",
+    "sosSimulateConfirm": "¿Disparar SOS de demo para este operario?\nSe lanzará la sirena en toda la app.",
+    "sosSimulateError": "Error al disparar SOS. Revisa la consola.",
+    "sosSimulateButton": "🆘 Disparar SOS (demo)",
+    "workerSection": "Operario",
+    "fields": {
+      "employeeCode": "Código",
+      "roleInPlant": "Puesto en planta",
+      "phone": "Teléfono",
+      "email": "Email",
+      "hireDate": "Alta en la empresa"
+    },
+    "companySection": "Empresa",
+    "tagSection": "Tag",
+    "positionSection": "Posición",
+    "heightOverFloor": "Altura sobre el suelo",
+    "heightZ": "Altura (Z)",
+    "coordsXY": "Coordenadas (X, Y)",
+    "notesSection": "Notas",
+    "tagWithoutWorker": "Tag sin trabajador asignado"
+  },
+  "modelSettings": {
+    "title": "Ajustes del modelo 3D",
+    "tooltip": "Ajustes del modelo 3D",
+    "yOffsetLabel": "Offset vertical del modelo (m)",
+    "yOffsetHelp": "Negativo = baja el modelo bajo el grid",
+    "avatarHeightLabel": "Altura de operarios (m)",
+    "avatarHeightHelp": "Altura total cuerpo + cabeza. Default 2.0 m",
+    "initialViewLabel": "Vista inicial (zoom + ángulo)",
+    "captureView": "Capturar vista actual",
+    "captureViewTooltip": "Guarda la posición y orientación actual de la cámara como vista por defecto al cargar el modelo",
+    "viewSaved": "Guardada: eye=({{eye}})",
+    "reset": "Restaurar valores por defecto"
+  },
+  "tree": {
+    "title": "Estructura del modelo",
+    "hierarchy": {
+      "containment": "Estructura",
+      "types": "Por tipo",
+      "storeys": "Por planta"
+    },
+    "searchPlaceholder": "Buscar… (ej. suelo)",
+    "results_one": "{{count}} resultado",
+    "results_other": "{{count}} resultados",
+    "resultsLimited": " (limitado)",
+    "expandAll": "Expandir todo",
+    "collapseAll": "Colapsar todo",
+    "showAll": "Mostrar todo",
+    "hideAll": "Ocultar todo",
+    "hide": "Ocultar",
+    "show": "Mostrar",
+    "hideAllResults": "Ocultar todos",
+    "showAllResults": "Mostrar todos",
+    "loadingModel": "Cargando estructura del modelo…"
+  },
+  "alerts": {
+    "drawerTitle": "Alertas",
+    "tabs": {
+      "unread": "No leídas",
+      "active": "Alertas",
+      "warnings": "Avisos",
+      "all": "Todas"
+    },
+    "sortBy": "Ordenar por:",
+    "sortRecent": "Recientes",
+    "sortSeverity": "Severidad",
+    "emptyActive": "No hay alertas activas",
+    "emptyHistory": "Sin alertas en el histórico",
+    "status": {
+      "active": "Activa",
+      "acknowledged": "Confirmada",
+      "resolved": "Resuelta"
+    },
+    "enteredAt": "Entró a las {{time}} · {{duration}} dentro",
+    "context": {
+      "workersNear": "Operarios cerca",
+      "equipmentInZone": "Equipos en zona",
+      "repeats": "Reincidencias"
+    },
+    "criticalTitle": "ALERTA CRÍTICA",
+    "inZone": "en zona",
+    "ackAndSilence": "ACEPTAR Y SILENCIAR",
+    "minimizeTooltip": "Minimizar (la alerta sigue activa en el icono de alertas)",
+    "bannerWorkerFallback": "Operario",
+    "entered": "Entró a las {{time}}",
+    "connected": "Conectado",
+    "disconnected": "Desconectado"
+  },
+  "sos": {
+    "drawerTitle": "🆘 SOS activos",
+    "emptyActive": "No hay SOS activos. Todo en orden.",
+    "panicMessage": "El operario ha pulsado el botón de pánico",
+    "pressedAt": "Pulsado a las",
+    "battery": "Batería",
+    "helpOnTheWay": "AYUDA EN CAMINO",
+    "workerSafe": "OPERARIO A SALVO",
+    "falsePositive": "Falso positivo",
+    "extraQueued": "+ {{count}} SOS adicional(es) en cola",
+    "notesPlaceholder": "Notas (opcional)",
+    "status": {
+      "pending": "Pendiente",
+      "acknowledged": "Confirmado",
+      "helpSent": "Ayuda enviada"
+    },
+    "actions": {
+      "ack": "Ayuda en camino",
+      "safe": "A salvo",
+      "false": "Falso"
+    },
+    "minimizeTooltip": "Minimizar (sigue rojo en la parte superior)"
+  },
+  "zones": {
+    "shapeType": {
+      "BOX": "Cubo",
+      "CYLINDER": "Cilindro",
+      "POLYGON": "Polígono"
+    },
+    "zoneTypeLabel": {
+      "DANGER": "Peligro",
+      "RESTRICTED": "Restringida",
+      "WARNING": "Aviso",
+      "SAFE": "Segura",
+      "INFO": "Informativa"
+    },
+    "validation": {
+      "nameRequired": "El nombre es obligatorio.",
+      "codeRequired": "El código es obligatorio para zonas nuevas.",
+      "codeRequiredSimple": "El código es obligatorio.",
+      "polygonMinVertices": "El polígono debe tener al menos 3 vértices.",
+      "zMinLtZMax": "zMin debe ser menor que zMax."
+    },
+    "createTitle": "Nueva zona",
+    "editTitle": "Editar zona: {{name}}",
+    "codeHelper": "Único por planta. Identificador estable para integraciones.",
+    "advancedJson": "Avanzado: pegar array JSON [[x,y],[x,y],…]",
+    "positionAndDimensions": "Posición y dimensiones (centro y tamaño en metros).",
+    "positionAndRadius": "Posición y radio (centro en m, radio en m).",
+    "lowerToFloor": "Bajar al suelo del modelo",
+    "detail": {
+      "severity": "Severidad",
+      "inactive": "Inactiva",
+      "dimensions": "Dimensiones",
+      "bboxHorizontal": "Bbox horizontal",
+      "height": "Altura",
+      "polygon": "Polígono",
+      "approachBuffer": "Buffer de aproximación",
+      "linkedEquipment": "Equipo asociado",
+      "rolesAllowed": "Roles permitidos",
+      "notificationPolicy": "Política de notificación",
+      "channelInApp": "In-app",
+      "channelEmail": "Email",
+      "channelHaptic": "Haptic MQTT",
+      "notifyWorker": "Operario",
+      "notifySupervisor": "Supervisor",
+      "notifySafety": "Seguridad",
+      "notifyManagers": "Managers",
+      "editZone": "Editar zona",
+      "vertices_one": "{{count}} vértice",
+      "vertices_other": "{{count}} vértices"
+    }
+  },
+  "events": {
+    "placeholder": "Placeholder — Histórico de eventos / acceso a zonas restringidas. Se construye en Fase 5."
   }
 }

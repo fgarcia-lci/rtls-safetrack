@@ -24,16 +24,20 @@ class ProximityStream {
   private subscribedTopic: string | null = null;
 
   setPlant(plantId: string): void {
-    if (this.currentPlantId === plantId) return;
+    const topic = `/topic/proximity/${plantId}`;
+    if (this.subscribedTopic === topic) return;
 
     if (this.subscribedTopic) {
       safetrackWebSocket.unsubscribe(this.subscribedTopic);
       this.subscribedTopic = null;
     }
-    this.factors.clear();
-    this.currentPlantId = plantId;
+    if (this.currentPlantId !== plantId) {
+      this.factors.clear();
+      this.currentPlantId = plantId;
+    }
 
-    const topic = `/topic/proximity/${plantId}`;
+    // Asegura el cliente STOMP activo aunque no se haya entrado a /live.
+    safetrackWebSocket.connect();
     safetrackWebSocket.subscribe(topic, (frame) => {
       try {
         const batch = JSON.parse(frame.body) as ProximityBatch;

@@ -43,6 +43,8 @@ Toda la documentación técnica está en `./docs/`. Orden sugerido:
 9. `docs/08_INTEGRATION_WITH_DT.md` — plan futuro de integración
 10. `docs/09_GDPR_AND_SECURITY.md` — privacidad
 11. `docs/10_VIEWS_AND_UX.md` — vistas 2D/3D, navegación
+12. `docs/11_ZONE_ACTIONS_AND_ALERTS.md` — catálogo de acciones, alertas y notificaciones por tipo de zona (CORE COMERCIAL)
+13. `docs/12_GUIA_COMERCIAL_Y_DEMO.md` — material de venta + guion de demo paso a paso (CORE COMERCIAL)
 
 ## Referencias al Digital Twin
 

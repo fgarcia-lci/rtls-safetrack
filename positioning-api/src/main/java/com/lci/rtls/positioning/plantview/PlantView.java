@@ -59,6 +59,15 @@ public class PlantView {
     @Column(columnDefinition = "JSON")
     private String defaultCamera;
 
+    /** Default vertical offset (m) applied to the model. ADMIN-editable
+     *  calibration so the floor matches Z=0. NULL = no offset. */
+    @Column(name = "default_y_offset")
+    private Double defaultYOffset;
+
+    /** Default avatar height (m) used by the 3D viewer. ADMIN-editable. */
+    @Column(name = "default_avatar_height_m")
+    private Double defaultAvatarHeightM;
+
     @Column(name = "display_order")
     private Integer displayOrder;
 

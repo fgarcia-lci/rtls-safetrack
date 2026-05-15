@@ -17,6 +17,8 @@ export interface PlantView {
   assetUrl: string;
   bbox?: string | null;
   defaultCamera?: string | null;
+  defaultYOffset?: number | null;
+  defaultAvatarHeightM?: number | null;
   displayOrder?: number | null;
   thumbnailUrl?: string | null;
   layers: PlantViewLayer[];

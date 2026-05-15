@@ -18,13 +18,25 @@ import { PositioningViewer3D } from './PositioningViewer3D';
 import { PositioningViewer2D } from './PositioningViewer2D';
 import { LayersPanel } from './LayersPanel';
 import { WorkerInfoPanel } from './WorkerInfoPanel';
+import { ZoneDetailModal } from '../../components/ZoneDetailModal/ZoneDetailModal';
+import { ModelViewSettingsPanel } from '../../components/ModelViewSettings/ModelViewSettingsPanel';
+import { ModelTreePanel } from '../../components/ModelTreePanel/ModelTreePanel';
+import {
+  modelViewConfigFromPlantView,
+  serializeDefaultCamera,
+  type ModelViewConfig,
+} from '../../utils/modelViewConfig';
+import { useAuth } from '../../context/AuthContext';
 import type { PlantView } from './types';
+import type { SafetyZone } from '../../types/zones';
 
 type ViewMode = '3d' | '2d';
 
 export function Live() {
   const { t } = useTranslation();
   const plantId = config.plant.defaultId;
+  const { user } = useAuth();
+  const isAdmin = useMemo(() => user?.roles?.includes('ROLE_ADMIN') ?? false, [user]);
 
   const [mode, setMode] = useState<ViewMode>('3d');
   const [plantViews, setPlantViews] = useState<PlantView[]>([]);
@@ -32,22 +44,29 @@ export function Live() {
 
   const [selectedSerial, setSelectedSerial] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  // Zona seleccionada para mostrar en el modal de detalle (#52). Se setea
+  // al hacer click en una zona en el visor 2D o 3D.
+  const [zoneDetail, setZoneDetail] = useState<SafetyZone | null>(null);
   // Seguimiento: si está activo, la cámara del visor 3D persigue al
   // muñequito de este serial. Se puede activar desde WorkerInfoPanel.
   const [followingSerial, setFollowingSerial] = useState<string | null>(null);
 
-  // Localización desde GlobalSearch via query params:
-  //   ?focusTag=SERIAL    → abre panel del tag.
-  //   ?focusWorker=ID     → resuelve el primer tag del worker y abre panel.
+  // Localización desde GlobalSearch / lista de Workers via query params:
+  //   ?focusTag=SERIAL          → abre panel del tag.
+  //   ?focusWorker=ID           → resuelve primer tag del worker y abre panel.
+  //   ?...&follow=true          → además activa modo seguimiento de cámara.
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
     const focusTag = searchParams.get('focusTag');
     const focusWorker = searchParams.get('focusWorker');
+    const followFlag = searchParams.get('follow') === 'true';
     if (focusTag) {
       setSelectedSerial(focusTag);
       setPanelOpen(true);
-      // Limpia el param para que recargas no reabran el panel.
+      if (followFlag) setFollowingSerial(focusTag);
+      // Limpia los params para que recargas no reabran el panel.
       searchParams.delete('focusTag');
+      searchParams.delete('follow');
       setSearchParams(searchParams, { replace: true });
     } else if (focusWorker) {
       const workerId = Number(focusWorker);
@@ -59,11 +78,13 @@ export function Live() {
             if (t) {
               setSelectedSerial(t.serial);
               setPanelOpen(true);
+              if (followFlag) setFollowingSerial(t.serial);
             }
           })
           .catch(() => { /* ignore */ });
       }
       searchParams.delete('focusWorker');
+      searchParams.delete('follow');
       setSearchParams(searchParams, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,6 +116,59 @@ export function Live() {
     setLayersVisible((prev) => ({ ...prev, [code]: visible }));
   };
 
+  // Modelo de calibración del visor. Vive en state local para que tocar
+  // un slider NO cambie la identidad de `activeView` (si lo hiciera, el
+  // viewer recargaría el modelo y se perderían cosas como los nodos
+  // ocultos del TreeView). La persistencia al backend ocurre por separado.
+  const [modelViewConfig, setModelViewConfig] = useState<ModelViewConfig>(
+    () => modelViewConfigFromPlantView(activeView),
+  );
+  useEffect(() => {
+    setModelViewConfig(modelViewConfigFromPlantView(activeView));
+    // Sólo reaccionamos al cambio de plant-view (identidad por id),
+    // no a actualizaciones internas — la calibración se guarda en BD
+    // pero se aplica localmente sin reconstruir activeView.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView?.id]);
+
+  const applyCalibration = (patch: {
+    defaultYOffset?: number;
+    defaultAvatarHeightM?: number;
+    defaultCamera?: string | null;
+  }) => {
+    if (!activeView) return;
+    setModelViewConfig((prev) => ({
+      yOffset: patch.defaultYOffset ?? prev.yOffset,
+      avatarHeightM: patch.defaultAvatarHeightM ?? prev.avatarHeightM,
+      cameraEye: patch.defaultCamera !== undefined
+        ? (patch.defaultCamera ? JSON.parse(patch.defaultCamera).eye ?? null : null)
+        : prev.cameraEye,
+      cameraLook: patch.defaultCamera !== undefined
+        ? (patch.defaultCamera ? JSON.parse(patch.defaultCamera).look ?? null : null)
+        : prev.cameraLook,
+    }));
+    plantViewService.updateCalibration(activeView.id, {
+      defaultYOffset: patch.defaultYOffset,
+      defaultAvatarHeightM: patch.defaultAvatarHeightM,
+      defaultCamera: patch.defaultCamera,
+    }).catch((err) => {
+      console.error('[Live] updateCalibration failed', err);
+    });
+  };
+
+  const handleYOffsetChange = (value: number) => applyCalibration({ defaultYOffset: value });
+  const handleAvatarHeightChange = (value: number) => applyCalibration({ defaultAvatarHeightM: value });
+  const handleCaptureView = () => {
+    const v = (window as unknown as { __rtlsViewer?: { scene: { camera: { eye: number[]; look: number[] } } } }).__rtlsViewer;
+    if (!v) return;
+    const eye = Array.from(v.scene.camera.eye) as [number, number, number];
+    const look = Array.from(v.scene.camera.look) as [number, number, number];
+    applyCalibration({ defaultCamera: serializeDefaultCamera(eye, look) });
+  };
+  const handleResetView = () => {
+    applyCalibration({ defaultYOffset: 0, defaultAvatarHeightM: 2.0, defaultCamera: null });
+  };
+
   const handleAvatarClick = (tagId: string) => {
     setSelectedSerial(tagId);
     setPanelOpen(true);
@@ -110,6 +184,17 @@ export function Live() {
       >
         <Typography variant="h5">{t('navigation.live')}</Typography>
         <Box sx={{ flexGrow: 1 }} />
+        {/* Botón de ajustes del modelo a la izquierda del toggle 3D/2D —
+            despliega un Popover con offset Y, altura muñequitos, etc. */}
+        {mode === '3d' && activeView && isAdmin && (
+          <ModelViewSettingsPanel
+            config={modelViewConfig}
+            onYOffsetChange={handleYOffsetChange}
+            onAvatarHeightChange={handleAvatarHeightChange}
+            onCaptureView={handleCaptureView}
+            onReset={handleResetView}
+          />
+        )}
         <ToggleButtonGroup
           value={mode}
           exclusive
@@ -137,13 +222,20 @@ export function Live() {
               plantView={activeView}
               layersVisible={layersVisible}
               onAvatarClick={handleAvatarClick}
+              onZoneClick={setZoneDetail}
               selectedSerial={panelOpen ? selectedSerial : null}
               followingSerial={followingSerial}
+              modelYOffset={modelViewConfig.yOffset}
+              initialCameraEye={modelViewConfig.cameraEye}
+              initialCameraLook={modelViewConfig.cameraLook}
+              avatarHeightM={modelViewConfig.avatarHeightM}
             />
           ) : (
             <PositioningViewer2D
               plantId={plantId}
+              plantView={activeView}
               onAvatarClick={handleAvatarClick}
+              onZoneClick={setZoneDetail}
             />
           )}
         </Box>
@@ -157,6 +249,11 @@ export function Live() {
               onToggle={handleToggleLayer}
             />
           </Box>
+        )}
+
+        {/* Árbol jerárquico de visibilidad del modelo — solo modo 3D */}
+        {mode === '3d' && activeView && (
+          <ModelTreePanel plantViewId={activeView.id} />
         )}
 
         {/* Indicador "esperando datos" cuando no hay activeView */}
@@ -175,6 +272,7 @@ export function Live() {
       <WorkerInfoPanel
         open={panelOpen}
         serial={selectedSerial}
+        plantView={activeView}
         onClose={() => setPanelOpen(false)}
         following={followingSerial !== null && followingSerial === selectedSerial}
         onToggleFollow={() => {
@@ -183,6 +281,10 @@ export function Live() {
           );
         }}
       />
+
+      {/* Modal de detalle de zona (#52) — se abre al hacer click sobre
+          una zona en cualquier visor. */}
+      <ZoneDetailModal zone={zoneDetail} onClose={() => setZoneDetail(null)} />
     </Box>
   );
 }

@@ -41,17 +41,19 @@ class PositionsStream {
    * Carga snapshot inicial y se suscribe al WS.
    */
   async setPlant(plantId: string): Promise<void> {
-    if (this.currentPlantId === plantId) return;
+    const topic = `/topic/positions/${plantId}`;
+    if (this.subscribedTopic === topic) return;
 
     // Limpiar suscripción anterior
     if (this.subscribedTopic) {
       safetrackWebSocket.unsubscribe(this.subscribedTopic);
       this.subscribedTopic = null;
     }
-    this.states.clear();
-    this.notify();
-
-    this.currentPlantId = plantId;
+    if (this.currentPlantId !== plantId) {
+      this.states.clear();
+      this.notify();
+      this.currentPlantId = plantId;
+    }
     this.loading = true;
 
     // 1. Snapshot inicial vía REST
@@ -82,7 +84,6 @@ class PositionsStream {
 
     // 2. Conectar WS si no lo está y suscribirse al topic de la planta
     safetrackWebSocket.connect();
-    const topic = `/topic/positions/${plantId}`;
     safetrackWebSocket.subscribe(topic, (message) => {
       try {
         const batch: PositionsBatch = JSON.parse(message.body);

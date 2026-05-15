@@ -72,6 +72,14 @@ services:
     ports:
       # Mismo puerto que en dev → 5180 (nginx interno escucha en 80)
       - "5180:80"
+    volumes:
+      # Bind mount de modelos XKT — permite cambiarlos sin rebuild de
+      # imagen. Cualquier .xkt que pongas en
+      # positioning-frontend/public/models/ aparece dentro del container
+      # en /usr/share/nginx/html/models/. Tras añadir/borrar un archivo:
+      #   docker compose restart positioning-frontend
+      # (no hace falta `build`).
+      - ../positioning-frontend/public/models:/usr/share/nginx/html/models:ro
     networks:
       - rts-net
 

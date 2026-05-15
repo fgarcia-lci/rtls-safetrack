@@ -1,8 +1,11 @@
 package com.lci.rtls.positioning.mqtt;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lci.rtls.positioning.config.MqttProperties;
 import com.lci.rtls.positioning.ingestion.PositionIngestionService;
 import com.lci.rtls.positioning.mqtt.adapter.PositionEventAdapter;
+import com.lci.rtls.positioning.sos.SosService;
+import com.lci.rtls.positioning.sos.dto.SosMqttPayload;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +42,8 @@ public class MqttSubscriberService implements MqttCallback {
     private final MqttProperties props;
     private final List<PositionEventAdapter> adapters;
     private final PositionIngestionService ingestionService;
+    private final SosService sosService;
+    private final ObjectMapper objectMapper;
 
     @PostConstruct
     void connect() {
@@ -84,11 +89,18 @@ public class MqttSubscriberService implements MqttCallback {
 
     @Override
     public void messageArrived(String topic, MqttMessage message) {
+        byte[] payload = message.getPayload();
+        // El SOS no necesita adapter — su payload es uniforme y la prioridad
+        // es procesarlo lo antes posible. Extracción rápida del tag serial
+        // desde el topic: .../tag/{serial}/sos
+        if (topic.endsWith("/sos")) {
+            handleSos(topic, payload);
+            return;
+        }
         for (PositionEventAdapter adapter : adapters) {
             if (!adapter.supports(topic)) {
                 continue;
             }
-            byte[] payload = message.getPayload();
             if (topic.endsWith("/position")) {
                 adapter.parsePosition(topic, payload).ifPresent(ingestionService::ingestPosition);
             } else if (topic.endsWith("/status")) {
@@ -100,6 +112,36 @@ public class MqttSubscriberService implements MqttCallback {
             return;
         }
         log.debug("No hay adapter para topic={}", topic);
+    }
+
+    /**
+     * Extrae el tag serial del topic SOS y delega al servicio.
+     * Topic esperado: {@code sim/v1/plant/{plant}/tag/{serial}/sos}.
+     */
+    private void handleSos(String topic, byte[] payload) {
+        String tagSerial = extractTagSerial(topic);
+        if (tagSerial == null) {
+            log.warn("No se pudo extraer tagSerial del topic SOS: {}", topic);
+            return;
+        }
+        try {
+            SosMqttPayload parsed = objectMapper.readValue(payload, SosMqttPayload.class);
+            sosService.onSosFromMqtt(tagSerial, parsed);
+        } catch (Exception e) {
+            log.error("Error procesando SOS topic={}: {}", topic, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Extrae el segmento entre {@code /tag/} y {@code /} del topic.
+     * Acepta cualquier prefijo y sufijo después del serial.
+     */
+    private static String extractTagSerial(String topic) {
+        int tagIdx = topic.indexOf("/tag/");
+        if (tagIdx < 0) return null;
+        int start = tagIdx + "/tag/".length();
+        int end = topic.indexOf('/', start);
+        return end > start ? topic.substring(start, end) : null;
     }
 
     @Override public void disconnected(MqttDisconnectResponse disconnectResponse) {

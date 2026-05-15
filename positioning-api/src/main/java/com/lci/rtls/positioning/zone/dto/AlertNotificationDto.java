@@ -1,5 +1,6 @@
 package com.lci.rtls.positioning.zone.dto;
 
+import com.lci.rtls.positioning.worker.CompanyType;
 import com.lci.rtls.positioning.zone.ZoneType;
 
 import java.time.Instant;
@@ -18,10 +19,16 @@ public record AlertNotificationDto(
         AlertState state,
         Instant ts,
 
-        // Datos del tag/operario
+        // Datos del tag/operario (enriquecidos para drawer/banner/app móvil
+        // sin necesidad de un fetch extra al recibir el push)
         String tagSerial,
+        Long workerId,
         String workerName,
         String workerCode,
+        String workerPhotoUrl,
+        String workerCompanyName,
+        CompanyType workerCompanyType,
+        String workerRoleInPlant,
 
         // Datos de la zona
         Long zoneId,

@@ -15,23 +15,26 @@
     "no": "No",
     "confirm": "Confirm",
     "active": "Active",
-    "inactive": "Inactive"
+    "inactive": "Inactive",
+    "refresh": "Refresh now",
+    "updatedAt": "Updated:",
+    "viewIn3D": "View in 3D"
   },
   "auth": {
     "login": "Sign in",
     "logout": "Sign out",
     "loggingIn": "Signing in...",
     "loggingOut": "Signing out...",
-    "loginError": "Authentication failed",
+    "loginError": "Authentication error",
     "noPermission": "You don't have permission to access this resource",
     "sessionExpired": "Your session has expired"
   },
   "navigation": {
     "dashboard": "Dashboard",
-    "live": "Live View",
+    "live": "Live view",
     "workers": "Workers",
     "tags": "Tags",
-    "zones": "Safety Zones",
+    "zones": "Safety zones",
     "events": "Events",
     "settings": "Settings"
   },
@@ -54,15 +57,43 @@
   },
   "login": {
     "subtitle": "Real-Time Safety Tracking",
-    "redirecting": "Redirecting to sign-in...",
-    "logoutSuccess": "You have signed out successfully",
-    "logoutSuccessDetail": "Redirecting to sign-in...",
+    "redirecting": "Redirecting to sign in...",
+    "logoutSuccess": "You've signed out successfully",
+    "logoutSuccessDetail": "Redirecting to sign in...",
+    "sessionExpired": "Your session has expired. Please sign in again with your credentials.",
     "error": {
       "credentials": "Invalid credentials",
       "locked": "Your account is locked",
       "expired": "Your session has expired",
-      "generic": "Authentication failed"
+      "generic": "Authentication error"
     }
+  },
+  "session": {
+    "warningTitle": "Your session is about to expire",
+    "warningMessage": "The session will end in less than a minute. Do you want to continue?",
+    "warningError": "Could not renew the session. Please sign out and sign in again.",
+    "continueButton": "Continue session",
+    "renewing": "Renewing…",
+    "logout": "Sign out"
+  },
+  "dashboard": {
+    "loadError": "Error loading dashboard summary",
+    "kpis": {
+      "workersOnsite": "Workers on site",
+      "alertsToday": "Alerts today",
+      "sosActive": "Active SOS",
+      "mttr": "MTTR (avg ACK time)",
+      "lowBatteryTags": "Low battery tags",
+      "assignedTags": "Assigned tags",
+      "companiesOnsite": "Companies on site",
+      "workersWithoutTag": "Workers without tag"
+    },
+    "topZones": "Top conflicting zones (today)",
+    "topWorkers": "Workers with most incidents (today)",
+    "companiesPresent": "Companies on site right now",
+    "noZoneEvents": "No zone events today. All clear.",
+    "noWorkerEvents": "No worker has triggered events today.",
+    "noActiveWorkers": "No active workers."
   },
   "workers": {
     "searchPlaceholder": "Search by name, code or company...",
@@ -162,11 +193,175 @@
     }
   },
   "live": {
-    "layers": "Layers",
+    "layers": "Disciplines",
     "tagInfoTitle": "Tag info",
     "assignedWorker": "Assigned worker",
     "unassigned": "Unassigned",
     "tagNotFound": "Tag not found",
-    "noView": "No 3D view configured for this plant"
+    "noView": "No 3D view configured for this plant",
+    "follow": "Follow in 3D",
+    "unfollow": "Unfollow",
+    "sosSimulateConfirm": "Trigger a demo SOS for this worker?\nThe siren will sound across the app.",
+    "sosSimulateError": "Error triggering SOS. Check the console.",
+    "sosSimulateButton": "🆘 Trigger SOS (demo)",
+    "workerSection": "Worker",
+    "fields": {
+      "employeeCode": "Code",
+      "roleInPlant": "Role at plant",
+      "phone": "Phone",
+      "email": "Email",
+      "hireDate": "Hire date"
+    },
+    "companySection": "Company",
+    "tagSection": "Tag",
+    "positionSection": "Position",
+    "heightOverFloor": "Height over floor",
+    "heightZ": "Height (Z)",
+    "coordsXY": "Coordinates (X, Y)",
+    "notesSection": "Notes",
+    "tagWithoutWorker": "Tag without assigned worker"
+  },
+  "modelSettings": {
+    "title": "3D model settings",
+    "tooltip": "3D model settings",
+    "yOffsetLabel": "Vertical offset (m)",
+    "yOffsetHelp": "Negative = lower the model below the grid",
+    "avatarHeightLabel": "Avatar height (m)",
+    "avatarHeightHelp": "Total body + head height. Default 2.0 m",
+    "initialViewLabel": "Initial view (zoom + angle)",
+    "captureView": "Capture current view",
+    "captureViewTooltip": "Saves the current camera position and orientation as the default view when loading the model",
+    "viewSaved": "Saved: eye=({{eye}})",
+    "reset": "Restore defaults"
+  },
+  "tree": {
+    "title": "Model structure",
+    "hierarchy": {
+      "containment": "Structure",
+      "types": "By type",
+      "storeys": "By floor"
+    },
+    "searchPlaceholder": "Search… (e.g. slab)",
+    "results_one": "{{count}} result",
+    "results_other": "{{count}} results",
+    "resultsLimited": " (limited)",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "showAll": "Show all",
+    "hideAll": "Hide all",
+    "hide": "Hide",
+    "show": "Show",
+    "hideAllResults": "Hide all",
+    "showAllResults": "Show all",
+    "loadingModel": "Loading model structure…"
+  },
+  "alerts": {
+    "drawerTitle": "Alerts",
+    "tabs": {
+      "unread": "Unread",
+      "active": "Alerts",
+      "warnings": "Warnings",
+      "all": "All"
+    },
+    "sortBy": "Sort by:",
+    "sortRecent": "Recent",
+    "sortSeverity": "Severity",
+    "emptyActive": "No active alerts",
+    "emptyHistory": "No alerts in history",
+    "status": {
+      "active": "Active",
+      "acknowledged": "Acknowledged",
+      "resolved": "Resolved"
+    },
+    "enteredAt": "Entered at {{time}} · {{duration}} inside",
+    "context": {
+      "workersNear": "Workers nearby",
+      "equipmentInZone": "Equipment in zone",
+      "repeats": "Recurrences"
+    },
+    "criticalTitle": "CRITICAL ALERT",
+    "inZone": "in zone",
+    "ackAndSilence": "ACKNOWLEDGE AND SILENCE",
+    "minimizeTooltip": "Minimize (alert stays active on the alerts icon)",
+    "bannerWorkerFallback": "Worker",
+    "entered": "Entered at {{time}}",
+    "connected": "Connected",
+    "disconnected": "Disconnected"
+  },
+  "sos": {
+    "drawerTitle": "🆘 Active SOS",
+    "emptyActive": "No active SOS. All clear.",
+    "panicMessage": "The worker pressed the panic button",
+    "pressedAt": "Pressed at",
+    "battery": "Battery",
+    "helpOnTheWay": "HELP ON THE WAY",
+    "workerSafe": "WORKER SAFE",
+    "falsePositive": "False positive",
+    "extraQueued": "+ {{count}} additional SOS in queue",
+    "notesPlaceholder": "Notes (optional)",
+    "status": {
+      "pending": "Pending",
+      "acknowledged": "Acknowledged",
+      "helpSent": "Help sent"
+    },
+    "actions": {
+      "ack": "Help on the way",
+      "safe": "Safe",
+      "false": "False"
+    },
+    "minimizeTooltip": "Minimize (stays red at the top)"
+  },
+  "zones": {
+    "shapeType": {
+      "BOX": "Box",
+      "CYLINDER": "Cylinder",
+      "POLYGON": "Polygon"
+    },
+    "zoneTypeLabel": {
+      "DANGER": "Danger",
+      "RESTRICTED": "Restricted",
+      "WARNING": "Warning",
+      "SAFE": "Safe",
+      "INFO": "Info"
+    },
+    "validation": {
+      "nameRequired": "Name is required.",
+      "codeRequired": "Code is required for new zones.",
+      "codeRequiredSimple": "Code is required.",
+      "polygonMinVertices": "Polygon must have at least 3 vertices.",
+      "zMinLtZMax": "zMin must be lower than zMax."
+    },
+    "createTitle": "New zone",
+    "editTitle": "Edit zone: {{name}}",
+    "codeHelper": "Unique per plant. Stable identifier for integrations.",
+    "advancedJson": "Advanced: paste JSON array [[x,y],[x,y],…]",
+    "positionAndDimensions": "Position and dimensions (center and size in meters).",
+    "positionAndRadius": "Position and radius (center in m, radius in m).",
+    "lowerToFloor": "Lower to model floor",
+    "detail": {
+      "severity": "Severity",
+      "inactive": "Inactive",
+      "dimensions": "Dimensions",
+      "bboxHorizontal": "Horizontal bbox",
+      "height": "Height",
+      "polygon": "Polygon",
+      "approachBuffer": "Approach buffer",
+      "linkedEquipment": "Linked equipment",
+      "rolesAllowed": "Allowed roles",
+      "notificationPolicy": "Notification policy",
+      "channelInApp": "In-app",
+      "channelEmail": "Email",
+      "channelHaptic": "Haptic MQTT",
+      "notifyWorker": "Worker",
+      "notifySupervisor": "Supervisor",
+      "notifySafety": "Safety",
+      "notifyManagers": "Managers",
+      "editZone": "Edit zone",
+      "vertices_one": "{{count}} vertex",
+      "vertices_other": "{{count}} vertices"
+    }
+  },
+  "events": {
+    "placeholder": "Placeholder — Event history / restricted zone access. To be built in Phase 5."
   }
 }

@@ -12,7 +12,7 @@ export const Events = () => {
       </Typography>
       <Paper sx={{ p: 3 }}>
         <Typography color="text.secondary">
-          Placeholder — Histórico de eventos con filtros y export vendrá en Fase 5.
+          {t('events.placeholder')}
         </Typography>
       </Paper>
     </Box>

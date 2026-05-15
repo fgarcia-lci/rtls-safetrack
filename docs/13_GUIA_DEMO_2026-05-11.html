@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>RTLS Safetrack — Guía de demo (2026-05-11)</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #1f2937;
+    line-height: 1.45;
+    font-size: 10.5pt;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 20px 24px 32px;
+  }
+  h1 { font-size: 22pt; margin: 0 0 4px; color: #111827; border-bottom: 3px solid #1976d2; padding-bottom: 6px; }
+  h1 .sub { display: block; font-size: 11pt; font-weight: 400; color: #6b7280; margin-top: 4px; }
+  h2 { font-size: 16pt; margin: 28px 0 10px; color: #1976d2; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+  h3 { font-size: 13pt; margin: 20px 0 8px; color: #111827; }
+  h4 { font-size: 11pt; margin: 14px 0 6px; color: #374151; }
+  p { margin: 6px 0; }
+  ol, ul { margin: 6px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 9.5pt; background: #f3f4f6; padding: 1px 5px; border-radius: 3px; }
+  pre { background: #1f2937; color: #f9fafb; padding: 12px 14px; border-radius: 4px; overflow-x: auto; font-family: "SFMono-Regular", Consolas, monospace; font-size: 9pt; line-height: 1.4; page-break-inside: avoid; }
+  pre code { background: transparent; color: inherit; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 16px; font-size: 9.5pt; page-break-inside: avoid; }
+  th, td { border: 1px solid #d1d5db; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #f3f4f6; font-weight: 600; color: #111827; }
+  tr:nth-child(even) td { background: #fafafa; }
+  blockquote { margin: 10px 0; padding: 8px 14px; background: #eff6ff; border-left: 4px solid #1976d2; color: #1f2937; }
+  .meta { color: #6b7280; font-size: 9pt; margin-bottom: 18px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 8.5pt; font-weight: 600; }
+  .pill-red    { background: #fee2e2; color: #991b1b; }
+  .pill-amber  { background: #fef3c7; color: #92400e; }
+  .pill-blue   { background: #dbeafe; color: #1e40af; }
+  .pill-green  { background: #d1fae5; color: #065f46; }
+  hr { border: 0; border-top: 1px solid #e5e7eb; margin: 22px 0; }
+  .toc { background: #f9fafb; padding: 10px 16px; border-radius: 6px; border: 1px solid #e5e7eb; font-size: 9.5pt; }
+  .toc ol { margin: 4px 0; padding-left: 18px; }
+  .ascii { font-family: "SFMono-Regular", Consolas, monospace; font-size: 8.5pt; line-height: 1.25; }
+  @media print {
+    h2 { page-break-after: avoid; }
+    h3 { page-break-after: avoid; }
+    pre, table { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>
+  RTLS Safetrack — Guía de demo
+  <span class="sub">Versión 2026-05-11 · Documento de soporte para presentación a cliente</span>
+</h1>
+
+<div class="meta">
+  Tres partes: (0) Arquitectura técnica · (1) Guion paso a paso · (2) Configuración y FAQ · (3) Comodines de cierre.
+</div>
+
+<div class="toc">
+  <strong>Índice</strong>
+  <ol>
+    <li>Parte 0 — Arquitectura técnica</li>
+    <li>Parte 1 — Guion de demo paso a paso</li>
+    <li>Parte 2 — Configuración + preguntas frecuentes</li>
+    <li>Parte 3 — Mensajes y comodines de cierre</li>
+  </ol>
+</div>
+
+<hr>
+
+<h2>Parte 0 — Arquitectura técnica</h2>
+
+<h3>0.1 Containers Docker</h3>
+<pre class="ascii">
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                          Compose: rtls-safetrack                             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  rtls-frontend         nginx + dist Vite           :5180                     │
+│  rtls-api              Spring Boot 3.5.6 / Java 21 :8090                     │
+│  rts-mosquitto         eclipse-mosquitto:2          :1884                    │
+│  rtls-simulator        Python 3 + paho-mqtt (opt-in con --profile sim)       │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                  Compose: dt-infra (compartido con Digital Twin)             │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  dt-infra-auth-server-1  Spring Authorization Srv :9000   (OAuth2 PKCE)      │
+│  dt-infra-mysql-1        MySQL 8                  :3307   (BD relacional)    │
+│  dt-infra-mongodb-1      MongoDB 7                :27016  (posiciones brutas)│
+└──────────────────────────────────────────────────────────────────────────────┘
+</pre>
+<p>Todo on-prem, una sola red Docker. Auth-server y BDs reutilizadas del DT — no se duplican.</p>
+
+<h3>0.2 Tecnologías por capa</h3>
+<table>
+  <thead><tr><th>Capa</th><th>Tecnología</th><th>Por qué</th></tr></thead>
+  <tbody>
+    <tr><td>Hardware (futuro)</td><td>UWB + ESP32 / equivalente</td><td>Estándar industrial para precisión 10–30 cm</td></tr>
+    <tr><td>Broker MQTT</td><td>Eclipse Mosquitto 2</td><td>De facto en IIoT. Compatible con cualquier proveedor</td></tr>
+    <tr><td>Backend</td><td>Spring Boot 3.5.6 / Java 21 + Eclipse Paho + Spring WebSocket STOMP + Spring Data JPA</td><td>Mismo stack que DT → integración limpia</td></tr>
+    <tr><td>BD relacional</td><td>MySQL 8 (esquema <code>dt_safetrack</code>, prefijo <code>pos_</code>)</td><td>Workers, tags, zonas, eventos, permisos</td></tr>
+    <tr><td>BD time-series</td><td>MongoDB 7 (BD <code>dt_safetrack_metrics</code>)</td><td>Posiciones brutas (alto volumen, query temporal)</td></tr>
+    <tr><td>Migraciones</td><td>Flyway V1..V9</td><td>Versionado controlado del esquema</td></tr>
+    <tr><td>Frontend</td><td>React 19 + Vite + TypeScript + MUI 7 + Redux Toolkit + i18n</td><td>Mismo stack que DT</td></tr>
+    <tr><td>Visor 3D</td><td>xeokit-sdk 2.6 (XKT loader, NavCube, TreeView)</td><td>Único viewer 3D BIM mantenido open-source</td></tr>
+    <tr><td>Comunicación FE↔BE</td><td>REST (Axios) + WebSocket STOMP sobre SockJS</td><td>Mismo patrón que DT</td></tr>
+    <tr><td>Auth</td><td>OAuth2 PKCE con auth-server del DT</td><td>Single sign-on</td></tr>
+    <tr><td>Simulador</td><td>Python 3 + paho-mqtt + PyYAML</td><td>Independiente, profile opt-in</td></tr>
+    <tr><td>Build / despliegue</td><td>Docker multistage, nginx prod</td><td>Frontend estático, sin servidor de aplicación</td></tr>
+  </tbody>
+</table>
+
+<h3>0.3 Flujo de datos (de tag a pantalla)</h3>
+<pre class="ascii">
+[Tag UWB / Simulator]
+       │  publica MQTT 1 Hz
+       ▼
+[Mosquitto :1884]
+       │  topic: sim/v1/plant/{plantId}/tag/{tagId}/position
+       ▼
+[positioning-api] ── Adapter MQTT (sim/v1) ──► PositionEvent (modelo interno)
+       │
+       ├─► MongoDB (escritura asíncrona, batch)
+       │
+       └─► ZoneEngineService (state machine)
+              │
+              │  proximity_factor por (tag, zone) cada N ms
+              ▼
+       [WebSocket STOMP]
+              │
+              ├─► /topic/positions/{plantId}   (batches de posiciones)
+              ├─► /topic/proximity/{plantId}   (factores de proximidad)
+              └─► /topic/alerts/{plantId}      (alertas ENTER/EXIT)
+                     │
+                     ▼
+              [Frontend React]
+                     ├─► Visor 3D interpola a 60 fps
+                     ├─► AlertsDrawer + Banner + Sirena
+                     └─► Notification API (si pestaña en background)
+</pre>
+
+<h3>0.4 Configuración del simulador</h3>
+<p>Archivo <code>simulator/tags.yaml</code>, montado como bind mount (editar sin rebuild).</p>
+<pre><code>plant_id: TSP3
+
+broker:
+  host: ${MQTT_HOST:-localhost}
+  port: ${MQTT_PORT:-1884}
+  username: ${MQTT_USERNAME:-}
+  password: ${MQTT_PASSWORD:-}
+  client_id_prefix: rtls-simulator
+
+publish:
+  position_hz: 1            # 1 posición por segundo y tag
+  status_seconds: 30        # estado tag (batería, RSSI) cada 30 s
+  heartbeat_seconds: 10     # gateway heartbeat cada 10 s
+
+simulation:
+  tick_ms: 100              # interpolación interna entre waypoints
+  jitter_m: 0.10            # ruido gaussiano de ±10 cm
+  default_z: 53.5           # altura del cinturón del operario (m)
+  battery_drop_per_hour_pct: 0.5
+
+tags:
+  - id: "AA:BB:CC:DD:00:01"
+    name: "Worker_01"
+    waypoints: [[5870, -3250], [5950, -3250], ...]
+    speed: 1.2              # m/s
+    pause_at_waypoint_seconds: 2
+    battery_start: 95
+</code></pre>
+
+<h3>0.5 Topics MQTT + payloads esperados</h3>
+<p>Tres topics base. El backend tiene un adapter por proveedor — cambiar el formato no requiere tocar la lógica de zonas/alertas.</p>
+
+<h4>1) Posición — <code>sim/v1/plant/{plantId}/tag/{tagId}/position</code> (QoS 0)</h4>
+<pre><code>{
+  "tag_id": "AA:BB:CC:DD:00:01",
+  "plant_id": "TSP3",
+  "ts": "2026-05-11T13:42:01.123Z",
+  "pos": { "x": 5910.421, "y": -3210.882, "z": 53.5 },
+  "accuracy_m": 0.10,
+  "anchors_used": 4,
+  "quality": "GOOD",
+  "source": "simulated",
+  "seq": 4521
+}</code></pre>
+
+<h4>2) Estado del tag — <code>sim/v1/plant/{plantId}/tag/{tagId}/status</code> (QoS 1, retain)</h4>
+<pre><code>{
+  "tag_id": "AA:BB:CC:DD:00:01",
+  "plant_id": "TSP3",
+  "ts": "2026-05-11T13:42:00.000Z",
+  "battery_pct": 87,
+  "rssi_dbm": -68,
+  "firmware": "sim-1.0.0",
+  "state": "OK"
+}</code></pre>
+
+<h4>3) Heartbeat gateway — <code>sim/v1/plant/{plantId}/system/heartbeat</code> (QoS 1, retain)</h4>
+<pre><code>{
+  "gateway_id": "sim-gw-001",
+  "plant_id": "TSP3",
+  "ts": "2026-05-11T13:42:00.000Z",
+  "tags_active": 10,
+  "throughput_msg_per_sec": 10.0,
+  "uptime_sec": 7821
+}</code></pre>
+
+<h3>0.6 Backend — paquetes principales</h3>
+<pre class="ascii">
+com.lci.rtls.positioning
+├── auth/             ← integración OAuth2 PKCE con DT
+├── plant/            ← entidades Plant, PlantView, PlantViewLayer
+├── worker/           ← Worker + repositorio + servicio + REST
+├── tag/              ← Tag + asignación a Worker
+├── zone/             ← SafetyZone, ZonePermission, ZoneSchedule
+│   ├── ZoneEngineService            ← state machine + proximity_factor
+│   ├── ProximityNotificationDispatcher  ← IN_APP / EMAIL / HAPTIC_MQTT
+│   └── ProximityEventService        ← histórico + ACK
+├── positions/        ← ingestión MQTT, MongoDB writer, WS push
+├── search/           ← buscador global cross-entity
+└── infra/            ← WebSocket, MQTT client, security
+</pre>
+
+<h3>0.7 Frontend — estructura</h3>
+<pre class="ascii">
+positioning-frontend/src
+├── pages/
+│   ├── Live/              ← visores 3D + 2D + tick rAF + interpolación
+│   └── Workers/, Tags/, Zones/, Events/, Login/, Dashboard/
+├── components/
+│   ├── AlertsDrawer/      ← drawer 400px, 4 tabs, ordenación
+│   ├── AlertBanner/       ← toasts top-right
+│   ├── CriticalSiren/     ← overlay full-screen + Web Audio API
+│   ├── ZoneDetailModal/   ← modal click en zona
+│   ├── ModelTreePanel/    ← TreeViewPlugin xeokit (visibilidad)
+│   ├── ModelViewSettings/ ← popover ⚙️ ajustes modelo
+│   └── Layout/, GlobalSearch/, etc.
+├── services/      ← REST clients, WebSocket, streams
+├── hooks/         ← usePositionsStream, useAlertsStream
+└── utils/         ← xktCache (IndexedDB), zoneColors, modelViewConfig
+</pre>
+
+<h3>0.8 Persistencia y caches (de menos a más persistente)</h3>
+<table>
+  <thead><tr><th>Capa</th><th>Qué guarda</th><th>TTL</th></tr></thead>
+  <tbody>
+    <tr><td>GPU xeokit</td><td>Modelo XKT cargado + escena</td><td>Vida de la pestaña</td></tr>
+    <tr><td>localStorage</td><td>Ajustes UI por user × plantView (offset, altura avatar, vista, nodos ocultos)</td><td>Hasta limpiar caché</td></tr>
+    <tr><td>IndexedDB</td><td>Bytes XKT por URL (cold-start instantáneo)</td><td>Hasta limpiar caché</td></tr>
+    <tr><td>HTTP cache nginx</td><td>XKT con <code>Cache-Control: immutable max-age=1y</code></td><td>1 año</td></tr>
+    <tr><td>MongoDB <code>dt_safetrack_metrics</code></td><td>Posiciones brutas (1 doc por mensaje)</td><td>Retención + anonimización</td></tr>
+    <tr><td>MySQL <code>dt_safetrack</code></td><td>Workers, tags, zonas, eventos, permisos</td><td>Permanente</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2>Parte 1 — Guion de demo paso a paso</h2>
+<ol>
+  <li><strong>Login</strong> — OAuth2 PKCE compartido con DT (auth-server :9000).</li>
+  <li><strong>Dashboard</strong> — En construcción. Futuros widgets: KPIs (alertas/día, MTTR, top zonas), head-count, último incidente.</li>
+  <li><strong>Diseño visual</strong> — Misma paleta, AppBar, drawer, MUI 7 y tipografía que el DT — integración futura drop-in.</li>
+  <li><strong>Live View modo 3D</strong> — Modelo 3D real (XKT) con operarios moviéndose en tiempo real.</li>
+  <li><strong>Toggle 3D ↔ 2D</strong> — Mismas zonas y operarios en planta top-down.</li>
+  <li><strong>Click en operario</strong> → pildora + panel lateral con ficha completa.</li>
+  <li><strong>Botón "Seguir en 3D"</strong> → camera-follow con orbit/zoom libres.</li>
+  <li><strong>Buscador global</strong> (top bar) — operario / tag / zona.</li>
+  <li><strong>Workers</strong> — CRUD + botón "Localizar en 3D" (diana).</li>
+  <li><strong>Tags</strong> — inventario + asignación a workers.</li>
+  <li><strong>Editor de zonas 3D</strong> — BOX/CYLINDER/POLYGON, gizmos, tipo, severidad, política de notificación, roles.</li>
+  <li><strong>Modal detalle de zona</strong> (click sobre zona en visor) → info + botón "Editar".</li>
+  <li><strong>Alertas en vivo</strong> (provocar con simulador):
+    <ul>
+      <li>Toast rojo top-right con foto del operario</li>
+      <li>Sirena visual full-screen + audio (críticas)</li>
+      <li>Notificación nativa del SO si pestaña en background</li>
+    </ul>
+  </li>
+  <li><strong>Drawer de alertas</strong> (campana) — 4 tabs · sort recientes/severidad · ACK + "Ver en 3D".</li>
+  <li><strong>TreeView del modelo</strong> (panel izquierdo del 3D) — ocultar tejados; click árbol↔3D resalta el elemento. Persistencia por usuario.</li>
+  <li><strong>Panel ⚙️ ajustes del modelo</strong> (junto al toggle 3D/2D) — offset Y, altura operarios en metros, captura vista inicial.</li>
+  <li><strong>Eventos</strong> — histórico para auditoría.</li>
+  <li><strong>Cierre · roadmap visible</strong>: pantalla guardia, head-count evacuación, modulación severidad por estado de equipos (DT), geo-tagged docs, replay temporal, heatmap, app móvil mánager, asistente IA local.</li>
+</ol>
+
+<hr>
+
+<h2>Parte 2 — Configuración + preguntas frecuentes</h2>
+<table>
+  <thead><tr><th>Pregunta</th><th>Respuesta corta</th><th>Dónde</th></tr></thead>
+  <tbody>
+    <tr><td>Tasa de publicación tags</td><td>1 Hz (configurable 0.5–10)</td><td><code>simulator/tags.yaml</code> → <code>publish.position_hz</code></td></tr>
+    <tr><td>Procesamiento backend</td><td>Streaming por mensaje. State machine inmediata, sin batch</td><td><code>ZoneEngineService</code></td></tr>
+    <tr><td>Refresco frontend</td><td>60 fps con interpolación entre posiciones</td><td><code>PositioningViewer3D</code> rAF tick</td></tr>
+    <tr><td>Min/max recomendado</td><td>Min 0.5 Hz · Max 10 Hz · <strong>Recomendado 1–2 Hz</strong></td><td>—</td></tr>
+    <tr><td>Topics WS</td><td><code>/topic/positions/{plantId}</code>, <code>/topic/proximity/{plantId}</code>, <code>/topic/alerts/{plantId}</code></td><td><code>WebSocketConfig.java</code></td></tr>
+    <tr><td>Multi-modelo</td><td>BD ya lo soporta; UI admin en roadmap</td><td><code>pos_plant_views</code>, <code>pos_plant_view_layers</code></td></tr>
+    <tr><td>Ubicación XKT</td><td><code>positioning-frontend/public/models/</code> (bind mount)</td><td>docker-compose</td></tr>
+    <tr><td>Auto-discovery de tags HW</td><td>Roadmap: bandeja de "Tags detectados sin registrar" con aprobación → asignación a worker</td><td>—</td></tr>
+    <tr><td>Permisos por zona</td><td><strong>Decisión pendiente</strong> — propio / DT / híbrido</td><td>doc 11 §3.2</td></tr>
+    <tr><td>Empresa del operario</td><td><code>companyName</code> + <code>companyType</code> (INTERNAL/CONTRACTOR/VISITOR)</td><td>tabla <code>pos_workers</code></td></tr>
+    <tr><td>Multi-planta</td><td>Soportado, planta fija TSP3 en PoC</td><td><code>config.ts</code> + <code>pos_plant_views</code></td></tr>
+    <tr><td>Canales notificación</td><td>IN_APP + EMAIL + HAPTIC_MQTT por zona</td><td><code>pos_safety_zones.notification_policy</code></td></tr>
+    <tr><td>Notif nativa SO</td><td>Notification API, pestaña en background</td><td><code>services/browserNotifications.ts</code></td></tr>
+    <tr><td>Persistencia ajustes UI</td><td>localStorage (a futuro BD user × plantView)</td><td><code>utils/modelViewConfig.ts</code></td></tr>
+    <tr><td>BDs</td><td>MySQL <code>dt_safetrack</code> + Mongo <code>dt_safetrack_metrics</code></td><td><code>infra/docker-compose.yml</code></td></tr>
+    <tr><td>Caída del broker</td><td>Mosquitto restart auto + Paho reconnect + retry tags HW</td><td>—</td></tr>
+    <tr><td>GDPR</td><td>Operamos por tag, no por persona. Retención + anonimización. Comité informado</td><td>doc 09</td></tr>
+    <tr><td>¿Real o simulado?</td><td>Algoritmo + UI: producción. Datos: simulador. Broker MQTT = frontera, cualquier HW se enchufa</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2>Parte 3 — Mensajes y comodines de cierre</h2>
+<ol>
+  <li><strong>"Esto no reemplaza la seguridad funcional certificada. Complementa."</strong></li>
+  <li><strong>"No vendemos vigilancia, vendemos protección con trazabilidad."</strong></li>
+  <li><strong>"Lo que habéis visto está vivo. Lo que está en roadmap, está en roadmap — y lo decimos claro."</strong></li>
+  <li><strong>"On-prem, dentro de vuestra red. No hay cloud salvo que vosotros lo pidáis."</strong></li>
+  <li><strong>"El sistema escala desde una zona piloto hasta la planta entera. No hay que comprar todo de golpe."</strong></li>
+</ol>
+
+<blockquote>
+  <strong>Comodín técnico:</strong> "Hoy estás viendo el algoritmo, las alertas y la UI corriendo en condiciones de producción sobre datos sintéticos. Cuando llegue el hardware UWB, la única pieza que cambia es el adapter MQTT del backend — todo lo demás ya está validado."
+</blockquote>
+
+<blockquote>
+  <strong>Comodín comercial:</strong> "Lo que estáis comprando no es un mapa con puntos de colores. Es una herramienta de gestión de seguridad con trazabilidad legal, integración nativa con vuestro Digital Twin si lo tenéis, y un roadmap específico para vuestras prioridades — no para las nuestras."
+</blockquote>
+
+</body>
+</html>

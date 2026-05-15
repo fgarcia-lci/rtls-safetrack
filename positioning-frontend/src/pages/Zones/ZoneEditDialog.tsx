@@ -154,11 +154,15 @@ export function ZoneEditDialog({ open, onClose, onSaved, zone, plantId, otherZon
       setCenterX(cx); setCenterZ(cz);
       setSizeX(20); setSizeZ(20);
       setRadius(10);
-      // Default zMin = suelo del modelo, zMax = +20 m para que la zona
-      // arranque pegada al suelo y abarque la altura típica de un piso.
-      // Si no hay modelAabb, fallback a un rango sensato.
+      // Default zMin = suelo del modelo MENOS un margen (FLOOR_MARGIN_M).
+      // El margen tolera mismatches entre el aabb del XKT, el bbox
+      // calibrado del plantView y el `default_z` del simulador: sin él,
+      // un operario a la altura del suelo puede caer 1-2 cm por debajo de
+      // zMin y el motor lo deja fuera vertical (incidente 2026-05-15).
+      // zMax = +20 m abarca la altura típica de un piso.
+      const FLOOR_MARGIN_M = 0.5;
       const floorY = modelAabb ? modelAabb.minY : 0;
-      setZMin(floorY); setZMax(floorY + 20);
+      setZMin(floorY - FLOOR_MARGIN_M); setZMax(floorY + 20);
       setPolygonText(`[[${cx - 10},${cz - 10}],[${cx + 10},${cz - 10}],[${cx + 10},${cz + 10}],[${cx - 10},${cz + 10}]]`);
     }
   }, [open, zone, modelAabb]);

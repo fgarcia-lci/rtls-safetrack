@@ -46,6 +46,7 @@ import {
   normalizeDeg,
 } from './zoneShape';
 import { ZoneEditor3DView } from './ZoneEditor3DView';
+import { ModelTreePanel } from '../../components/ModelTreePanel/ModelTreePanel';
 import type {
   SafetyZone,
   ShapeType,
@@ -189,6 +190,14 @@ export function ZoneEditorPage() {
     displayColor,
   }), [polygon2d, zMin, zMax, displayColor]);
 
+  // Margen vertical bajo el suelo geométrico del modelo (aabb[1]). Las
+  // zonas extienden zMin medio metro POR DEBAJO del suelo visible para
+  // tolerar mismatches entre el aabb del XKT, el bbox calibrado del
+  // plantView y el `default_z` del simulador. Sin este margen, un operario
+  // a la altura "del suelo" puede caer 1-2 cm por debajo de zMin y el
+  // motor lo deja fuera vertical → alertas mudas (incidente 2026-05-15).
+  const FLOOR_MARGIN_M = 0.5;
+
   const handleModelLoaded = (aabb: number[]) => {
     setModelFloorY(aabb[1]);
     // Solo aplicar defaults si es zona nueva y form aún no ha sido
@@ -198,17 +207,18 @@ export function ZoneEditorPage() {
     const cx = (aabb[0] + aabb[3]) / 2;
     const cz = (aabb[2] + aabb[5]) / 2;
     setCenterX(cx); setCenterZ(cz);
-    setZMin(aabb[1]);
+    setZMin(aabb[1] - FLOOR_MARGIN_M);
     setZMax(aabb[1] + 20);
   };
 
-  /** Pone zMin = suelo del modelo manteniendo la altura actual. Si no
-   *  hay modelFloorY (todavía cargando), no hace nada. */
+  /** Pone zMin = suelo del modelo (con margen) manteniendo la altura. Si
+   *  no hay modelFloorY (todavía cargando), no hace nada. */
   const handleSnapToFloor = () => {
     if (modelFloorY == null) return;
+    const newZMin = modelFloorY - FLOOR_MARGIN_M;
     const height = Math.max(0.1, zMax - zMin);
-    setZMin(modelFloorY);
-    setZMax(modelFloorY + height);
+    setZMin(newZMin);
+    setZMax(newZMin + height);
   };
 
   const handleSave = async () => {
@@ -295,6 +305,14 @@ export function ZoneEditorPage() {
               setZMax(newZMin + h);
             }}
           />
+          {/* Árbol del modelo — mismo componente que en Live, pero
+              apuntando al viewer del editor (expuesto en window). */}
+          {plantView && (
+            <ModelTreePanel
+              plantViewId={plantView.id}
+              viewerWindowKey="__rtlsZoneEditorViewer"
+            />
+          )}
         </Box>
 
         <Paper

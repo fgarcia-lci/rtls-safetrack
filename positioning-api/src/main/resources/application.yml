@@ -79,6 +79,7 @@ rtls:
       simulator-position: sim/v1/plant/+/tag/+/position
       simulator-status: sim/v1/plant/+/tag/+/status
       simulator-heartbeat: sim/v1/plant/+/system/heartbeat
+      simulator-sos: sim/v1/plant/+/tag/+/sos
     # Topic donde publicamos comandos (template; el formato/topic real lo decide el adapter del proveedor)
     command-topic-template: sim/v1/plant/{plantId}/tag/{tagId}/command
 

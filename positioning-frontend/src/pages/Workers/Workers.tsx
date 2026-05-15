@@ -22,8 +22,14 @@ import {
   Alert,
   Stack,
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
+  MyLocation as MyLocationIcon,
+} from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { workerService } from '../../services/workerService';
 import { useAuth } from '../../context/AuthContext';
 import { WorkerDialog } from './WorkerDialog';
@@ -44,6 +50,7 @@ const useDebounced = <T,>(value: T, delay = 300): T => {
 export function Workers() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const isAdmin = useMemo(() => user?.roles?.includes('ROLE_ADMIN') ?? false, [user]);
 
@@ -111,6 +118,13 @@ export function Workers() {
     } catch {
       setToast({ msg: t('common.error'), severity: 'error' });
     }
+  };
+
+  const handleLocate = (w: Worker) => {
+    // Navega a Live con focusWorker (selecciona la pildora) + follow=true
+    // (activa modo seguimiento de cámara). Si el worker no tiene tag o
+    // no hay posiciones recientes, Live mostrará el estado "sin posición".
+    navigate(`/live?focusWorker=${w.id}&follow=true`);
   };
 
   const handleSaved = () => {
@@ -236,6 +250,18 @@ export function Workers() {
                   </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      <Tooltip title={t('workers.actions.locateOn3D', 'Localizar en 3D')}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            disabled={!w.isActive}
+                            onClick={() => handleLocate(w)}
+                          >
+                            <MyLocationIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                       {isAdmin && (
                         <>
                           <Tooltip title={t('common.edit')}>
