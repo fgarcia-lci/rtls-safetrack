@@ -27,9 +27,25 @@ public record WorkerDto(
         Instant createdAt,
         Instant updatedAt,
         String createdBy,
-        String updatedBy
+        String updatedBy,
+        // --- Roles unificados V13 ---
+        boolean isWorkerInPlant,
+        boolean isSupervisor,
+        boolean isCompanyManager,
+        // --- Supervisor / empresa ---
+        Long supervisorId,
+        String supervisorName,
+        Long backupSupervisorId,
+        String backupSupervisorName,
+        Long companyId,
+        // --- PRL ---
+        LocalDate lastPrlTrainingDate,
+        int prlValidMonths,
+        String supervisorNotes
 ) {
     public static WorkerDto from(Worker w) {
+        Worker sup = w.getSupervisorPerson();
+        Worker bkp = w.getBackupSupervisorPerson();
         return new WorkerDto(
                 w.getId(),
                 w.getEmployeeCode(),
@@ -48,7 +64,18 @@ public record WorkerDto(
                 w.getCreatedAt(),
                 w.getUpdatedAt(),
                 w.getCreatedBy(),
-                w.getUpdatedBy()
+                w.getUpdatedBy(),
+                w.isWorkerInPlant(),
+                w.isSupervisor(),
+                w.isCompanyManager(),
+                sup != null ? sup.getId() : null,
+                sup != null ? sup.getFullName() : null,
+                bkp != null ? bkp.getId() : null,
+                bkp != null ? bkp.getFullName() : null,
+                w.getCompany() != null ? w.getCompany().getId() : null,
+                w.getLastPrlTrainingDate(),
+                w.getPrlValidMonths(),
+                w.getSupervisorNotes()
         );
     }
 }

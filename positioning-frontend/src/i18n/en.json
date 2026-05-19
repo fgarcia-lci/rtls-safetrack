@@ -203,7 +203,7 @@
     "unfollow": "Unfollow",
     "sosSimulateConfirm": "Trigger a demo SOS for this worker?\nThe siren will sound across the app.",
     "sosSimulateError": "Error triggering SOS. Check the console.",
-    "sosSimulateButton": "🆘 Trigger SOS (demo)",
+    "sosSimulateButton": "Trigger SOS (demo)",
     "workerSection": "Worker",
     "fields": {
       "employeeCode": "Code",
@@ -289,7 +289,7 @@
     "disconnected": "Disconnected"
   },
   "sos": {
-    "drawerTitle": "🆘 Active SOS",
+    "drawerTitle": "Active SOS",
     "emptyActive": "No active SOS. All clear.",
     "panicMessage": "The worker pressed the panic button",
     "pressedAt": "Pressed at",

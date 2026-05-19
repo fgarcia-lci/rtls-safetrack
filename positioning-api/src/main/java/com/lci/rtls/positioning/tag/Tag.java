@@ -67,8 +67,14 @@ public class Tag {
     @Column(nullable = false, length = 20)
     private TagState state;
 
+    /**
+     * Persona a la que está asignado el tag. La columna se renombró a
+     * {@code assigned_person_id} en V13 (la tabla {@code pos_workers} pasó a
+     * {@code pos_persons}). El nombre de campo Java {@code assignedWorker} se
+     * mantiene para no romper los ~140 sitios que lo referencian.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "assigned_worker_id")
+    @JoinColumn(name = "assigned_person_id")
     private Worker assignedWorker;
 
     private Instant assignedAt;

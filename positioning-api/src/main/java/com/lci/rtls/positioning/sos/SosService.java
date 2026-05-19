@@ -48,7 +48,7 @@ public class SosService {
      */
     @Transactional
     public SosEvent onSosFromMqtt(String tagSerial, SosMqttPayload payload) {
-        log.warn("🆘 SOS recibido por MQTT tagSerial={} plant={}", tagSerial, payload.plant_id());
+        log.warn("SOS recibido por MQTT tagSerial={} plant={}", tagSerial, payload.plant_id());
         Optional<Tag> tagOpt = tagRepo.findBySerial(tagSerial);
         if (tagOpt.isEmpty()) {
             log.warn("SOS de tag desconocido (no registrado): {}. Se crea evento huérfano.", tagSerial);

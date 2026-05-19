@@ -179,7 +179,7 @@ export function SosSiren({ plantId }: Props) {
             textShadow: '0 4px 16px rgba(0,0,0,0.7)',
           }}
         >
-          🆘 SOS
+           SOS
         </Typography>
       </Box>
 

@@ -38,8 +38,13 @@ public class ProximityEvent {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** FK a {@code pos_workers.id}. NULL si el tag no estaba asignado al entrar. */
-    @Column(name = "worker_id")
+    /**
+     * FK a {@code pos_persons.id}. NULL si el tag no estaba asignado al entrar.
+     * Columna renombrada de {@code worker_id} → {@code person_id} en V13.
+     * El nombre de campo Java se mantiene como {@code workerId} para no romper
+     * los lugares (DTOs, services, repositorios) que ya lo usan.
+     */
+    @Column(name = "person_id")
     private Long workerId;
 
     @Column(name = "tag_id", nullable = false)

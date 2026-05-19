@@ -1,12 +1,14 @@
 # 12. Guía comercial y demo de RTLS Safetrack
 
+> **Versión 2.0 · 18/05/2026** — Actualizado el mapa de capacidades con todo lo implementado entre 7 y 18 de mayo (SOS completo, ficha de trabajador con score de riesgo, dashboard, modal de sirenas, modelo unificado de personas, PRL caducado). Roadmap reorganizado. Guion ampliado con escena de SOS y acto dedicado a la ficha de trabajador. Mención explícita al asistente IA local.
+>
 > **Propósito**: documento único para vender el producto y guiar la demo en vivo. Tres partes:
 >
 > - **Parte 1** — material comercial (qué se vende, a quién, por qué)
 > - **Parte 2** — guion de demo paso a paso (qué mostrar, en qué orden, qué decir)
 > - **Parte 3** — material de soporte (checklist técnico, troubleshooting, FAQ)
 >
-> Complementa al `docs/11_ZONE_ACTIONS_AND_ALERTS.md` (catálogo de acciones por zona) y al `docs/00_OVERVIEW.md` (visión general).
+> Complementa al `docs/11_ZONE_ACTIONS_AND_ALERTS.md` (catálogo de acciones por zona), al `docs/00_OVERVIEW.md` (visión general) y al `docs/PROPUESTA_PLATAFORMA_LCI_2026-05-18.md` (documento ejecutivo enviado a manager / dirección).
 
 ---
 
@@ -33,7 +35,7 @@ No reemplaza la seguridad funcional certificada (ISO 13849, IEC 62061). **Comple
 
 ### 1.3 La propuesta de valor en una frase
 
-> *"Sabemos en cada momento dónde está cada persona, y reaccionamos antes de que sea tarde."*
+> *"Sabemos en cada momento dónde está cada persona, lo que permite a los equipos de seguridad y monitoreo reaccionar antes de que sea tarde."*
 
 ### 1.4 Para quién (perfil de cliente)
 
@@ -68,11 +70,11 @@ La mayoría de productos RTLS del mercado son **geofencing puro**: "el operario 
 4. **Multi-canal coordinado**:
    - In-app drawer (estilo NotificationCenter)
    - Banner toast top-right
-   - Sirena full-screen para críticas
+   - Sirena modal centrada con audio para alertas críticas y SOS
    - Notificación nativa del SO cuando la pestaña está en background
    - Email
    - Haptic MQTT al wearable
-   - *Próximamente*: app móvil de manager, integración SCADA
+   - *Próximamente*: app móvil de manager, SMS/llamadas vía gateway GSM, integración SCADA
 
 5. **Sinergia con Digital Twin** (cuando el cliente ya tiene DT o lo va a tener):
    - Reutiliza identidad y jerarquía del DT
@@ -85,45 +87,98 @@ La mayoría de productos RTLS del mercado son **geofencing puro**: "el operario 
 ### 1.6 Mapa de capacidades
 
 #### Implementadas (PoC en vivo, demo-ables hoy)
-- Visor 3D de la planta con operarios en tiempo real
-- Editor visual de zonas (cubo / cilindro / polígono) sobre el modelo 3D
-- Detección de entrada/salida con state machine y proximity factor
-- AlertsDrawer con 4 tabs (No leídas / Alertas / Avisos / Todas), sort y badges
+
+**Visualización**
+- Visor 3D de la planta con operarios en tiempo real (xeokit BIM Viewer)
+- Visor 2D top-down sincronizado con la misma información
+- Cubo de navegación 3D + árbol jerárquico del modelo + búsqueda de elementos
+- Pildoras identificativas sobre cada operario con foto, nombre y empresa
+- Halo coloreado por proximidad sobre cada operario
+- Camera-follow del operario seleccionado con trazo del recorrido
+- Doble click sobre operario → zoom a su posición
+- Badge "ojo" sobre la pildora cuando un operario está siendo seguido
+
+**Zonas y motor de seguridad**
+- Editor visual de zonas (cubo / cilindro / polígono) sobre el modelo 3D, con gizmos para mover, rotar y escalar
+- Snap al suelo del modelo BIM con margen automático
+- Cinco tipos de zona configurables (DANGER / RESTRICTED / WARNING / SAFE / INFO) con severidad 1–5
+- Motor de zonas con máquina de estados (fuera / aproximándose / dentro) y factor de proximidad continuo
+- Modal de detalle de zona al hacer click sobre cualquier visor (2D o 3D)
+
+**Alertas y SOS**
+- AlertsDrawer con 4 tabs (No leídas / Alertas / Avisos / Todas), ordenación y badges
+- AlertBanner flotante con toasts auto-dismiss
+- Sirena modal centrada con audio para alertas críticas (DANGER) y para SOS
+- Workflow SOS completo: botón de pánico → pendiente → confirmado por vigilante → ayuda en camino → operario a salvo, con auditoría completa
+- SosDrawer lateral con SOS activos y acciones rápidas
+- Política de notificación configurable por zona (operario, supervisor primario, supervisor de respaldo, manager de la empresa, equipo de seguridad)
 - Notificaciones enriquecidas con foto del operario y contexto
-- AlertBanner flotante
-- Sirena visual full-screen + audio loop para críticas
-- Notificaciones nativas del SO en background
+- Notificaciones nativas del SO cuando la pestaña está en background
 - Haptic MQTT al wearable (placeholder de hardware)
-- Email a supervisor
+- Email a supervisor (preparado, pendiente del SMTP del cliente)
+
+**Personas y empresas**
+- Modelo de personas unificado: cada persona puede ser trabajador, supervisor o manager (o varios roles a la vez), con teléfono y email obligatorios para escalado
+- Gestión de empresas (internas / contratistas / visitantes) con manager de contacto
+- Asignación de tags a operarios
+- Registro del último curso PRL con alerta automática de caducidad
+- Soporte de supervisor primario + supervisor de respaldo por operario
+
+**Ficha del trabajador**
+- Página completa `/workers/:id` con sidebar de identidad + 4 pestañas
+- Tab Resumen con KPIs de las últimas 24 h
+- Tab Histórico con date picker, slider horario, ruta del día sobre canvas 2D y tabla de tiempo por zona
+- Tab Perfil de riesgo con score compuesto 0–10 + chip (Bajo / Medio / Alto / Crítico) + desglose por componente y top zonas conflictivas
+- Tab Incidentes con tabla auditable de las últimas alertas y SOS
+
+**Dashboard y operativa**
+- Dashboard de KPIs de seguridad: operarios en planta, alertas del día, SOS activos, MTTR, tags con batería baja, empresas presentes, operarios sin tag
+- Top zonas conflictivas y top operarios con más incidencias
 - Búsqueda global de operarios / tags / zonas
-- Camera-follow de un operario en el visor 3D
-- Visor 2D de planta
-- Gestión de Workers, Tags, Plantas, asignaciones
-- Auditoría: histórico de eventos de proximity con ACK
+
+**Plataforma técnica**
+- Autenticación OAuth2 con PKCE integrada con el auth-server del Digital Twin
+- Sesión extendida con renovación automática de token y aviso pre-caducidad
+- Comunicación cliente–servidor en tiempo real vía WebSocket STOMP
+- Soporte multi-planta
+- Internacionalización ES / EN
+- Persistencia híbrida MySQL + MongoDB con **retención configurable** (default 7 días, ajustable)
+- Arquitectura abierta: el broker MQTT es la frontera, lo que permite cambiar de proveedor de hardware sin reescribir la plataforma
 
 #### Roadmap inmediato (próximos meses)
-- Pantalla de control "guardia" dedicada a vigilancia
-- Detector de evacuación / head-count
-- Modulación de severity por permanencia
-- Lista blanca de permisos y log exportable (RESTRICTED)
+- Pantalla de control "guardia" dedicada a vigilancia (monitor grande de control room)
+- Replay temporal (scrubber de las últimas N horas)
+- Lista blanca de permisos y log exportable CSV/PDF (RESTRICTED)
+- Acompañamiento obligatorio de visitantes en zonas RESTRICTED
 - Cooldown educativo / detección de reincidencias
 - Heatmap de incidentes
-- Dashboard de KPIs (MTTR, alertas/día, top zonas)
+- Detector de evacuación / head-count
+- Modulación de severity por permanencia
+- CRUD admin de Companies y Supervisors desde la UI
+- Pantalla de seguridad de entrada/salida (alta de operario + asignación de tag en portería)
+- Histórico cruzado: ruta del operario + tag concreto que llevaba en ese momento
+- Asignación rotatoria de tags (cuando hay menos tags que empleados)
+- Auto-discovery de tags hardware con bandeja de aprobación
 
 #### Roadmap medio plazo (depende del cliente y del DT)
-- Modulación de severity por estado de equipos (vía DT/OT-gateway)
-- Geo-tagged docs (gestor documental del DT)
-- Replay temporal
-- App móvil de manager (Purdue/IEC 62443 friendly)
-- Asistente IA privado local (Ollama on-prem)
+- **Asistente IA privado local** (Ollama on-prem, 100% en infraestructura del cliente): consultas en lenguaje natural, resúmenes automáticos de actividad, generación de informes PRL — *los datos nunca salen de la planta*
+- **Integración con módulo IA de Fatine en los tags** mediante contrato MQTT (caídas, posturas anómalas, inmovilidad detectadas localmente en el tag)
+- Modulación de severity por estado de equipos (vía DT / OT-gateway)
+- Modulación por rol del operario × estado de mantenimiento (LOTO activo, etc.)
+- Geo-tagged docs (procedimientos PRL y fichas de seguridad por zona, del gestor documental del DT)
+- App móvil de manager (Purdue / IEC 62443 friendly)
+- SMS / llamadas externas vía gateway GSM on-premise
+- Reportes de peligrosidad por empleado y por empresa contratista (exportables)
+- Integración con cámaras ONVIF/RTSP asociadas a zonas (al saltar alerta, la cámara más cercana muestra el evento)
+- Tags en vehículos (palas, retroexcavadoras, bobcats) con interacción operario ↔ vehículo
+- Soporte de zonas anidadas / solapadas
 
 #### Showcase (capacidades a nombrar pero no implementar en PoC)
-- Lone worker alert
-- Man-down detection
+- Lone worker alert avanzado
+- Man-down detection vía IA en el tag
 - Evidencia automática para mutua
 - Coordinación con AGVs / puentes grúa
-- Bloqueo lógico SCADA
-- SMS/llamadas externas
+- Bloqueo lógico SCADA / sala de control
 
 ### 1.7 Argumentos económicos / ROI
 
@@ -212,7 +267,9 @@ Deja que respondan. Esa pausa es la que vende.
    > *"Cada operario tiene su tag. Vemos quién es, de qué empresa, qué cargo, todo en vivo. No estamos viendo personas en abstracto — sabemos quién es cada uno."*
 
 2. **Click en una pildora** → se abre `WorkerInfoPanel` con foto + datos completos
-   > *"Toda la ficha disponible al instante. Foto, empresa, supervisor, fecha de alta, observaciones."*
+   > *"Toda la ficha disponible al instante. Foto, empresa, supervisor, teléfono (clicable), email, fecha de alta, puesto en planta, batería del tag, coordenadas exactas. Si el operario tiene la formación PRL caducada, lo veo en rojo aquí mismo."*
+
+   **Doble click sobre el operario** → la cámara hace zoom sobre él sin enganchar follow.
 
 3. **Botón "Seguir en 3D"** → camera follow
    > *"Y si hay que seguir a alguien — porque está haciendo una operación delicada o porque ha entrado en un sitio raro — la cámara lo persigue. Y mientras, podéis seguir orbitando, haciendo zoom, lo que sea."*
@@ -238,13 +295,13 @@ Deja que respondan. Esa pausa es la que vende.
 
 1. **Pildora del operario se vuelve roja** (visor 3D)
 2. **Toast rojo** desliza desde la derecha (AlertBanner)
-3. **Overlay full-screen rojo** parpadeante (CriticalSiren) + **sonido de sirena**
+3. **Modal centrado rojo pulsante con sirena de audio** (CriticalSiren) sobre un fondo atenuado
 4. Si tienes la pestaña secundaria abierta de "vigilante" → **notificación nativa de Windows** allí
 
-> *"Mirad lo que pasa: el operario sigue donde está, pero el sistema ya sabe. La pildora roja, el toast con su foto y empresa, la sirena en pantalla — el vigilante NO puede ignorar esto, físicamente le tapa toda la app. Y si el vigilante estaba en otra pestaña, la notificación del sistema operativo le suena en su Windows. No depende de que esté mirando la app."*
+> *"Mirad lo que pasa: el operario sigue donde está, pero el sistema ya sabe. La pildora roja, el toast con su foto y empresa, la sirena pulsando en el centro de la pantalla — el vigilante NO puede ignorar esto. Y si estaba en otra pestaña, la notificación del sistema operativo le suena en su Windows. No depende de que esté mirando la app."*
 
-**Mostrar el contenido del toast / sirena**:
-> *"Y fijaos en la información que llega: foto, nombre, empresa, rol, en qué zona está, hora exacta de entrada. Todo en una pantalla. El vigilante no tiene que abrir cinco sistemas para entender qué pasa."*
+**Mostrar el contenido del modal de sirena**:
+> *"Fijaos en la información que llega: foto, nombre, empresa, rol, en qué zona está, hora exacta de entrada. Todo en una pantalla. El vigilante no tiene que abrir cinco sistemas para entender qué pasa."*
 
 **Click en "Ver en 3D"** → el sistema te lleva a Live, foco al operario, modo follow activado, panel abierto.
 
@@ -253,6 +310,25 @@ Deja que respondan. Esa pausa es la que vende.
 **Click en "ACEPTAR Y SILENCIAR"** → siren desaparece, alerta queda en estado "Confirmada".
 
 > *"Una vez confirmado, el sistema deja de gritar pero la alerta sigue activa hasta que el operario salga. Y todo queda registrado: hora de entrada, hora de confirmación por el vigilante, hora de salida. Si mañana hay una inspección o un incidente, esto vale oro."*
+
+---
+
+**🆘 Escena alternativa — el botón de pánico (SOS)** (2-3 min, intercalar aquí o como escena propia)
+
+> *"Y ahora imaginad que el operario, además, pulsa el botón de pánico de su tag. Algo le ha pasado. No es que el sistema lo detecte por proximidad, es que él pide ayuda activamente."*
+
+**Disparas un SOS** desde el panel de un operario (botón "Disparar SOS demo") o desde el simulador.
+
+**Lo que pasa**:
+1. **Sirena SOS distinta** (modal rojo más intenso, audio diferente) — *el vigilante distingue al instante si es entrada en zona o petición activa de auxilio*
+2. **Mensaje claro**: "El operario ha pulsado el botón de pánico"
+3. **Datos enriquecidos**: foto + nombre + empresa + teléfono **clicable** ("llamar ya")
+4. **Tres acciones**: *Ayuda en camino* / *Operario a salvo* / *Falso positivo*
+
+> *"Aquí el workflow es distinto. No basta con confirmar — hay que cerrar el ciclo. El vigilante marca 'ayuda en camino' cuando lanza al equipo. Cuando el equipo llega y la situación está cerrada, marca 'operario a salvo'. Si fue un pulsado accidental, 'falso positivo'. Todo queda registrado: cuándo se pulsó, cuándo se confirmó, cuándo llegó la ayuda, quién hizo qué."*
+
+**Mostrar el SosDrawer** (icono SOS del AppBar):
+> *"Y si hay varios SOS simultáneos, el responsable los ve a todos en este panel, con sus estados y sus tiempos."*
 
 ### 2.4 Acto 3 — Gestión y trazabilidad (3-4 min)
 
@@ -278,21 +354,53 @@ Deja que respondan. Esa pausa es la que vende.
 6. Buscar un operario por nombre / un tag por serial / una zona por código
    > *"Buscador global. Funciona con todo: operarios, tags, zonas. Click → me lleva al sitio correspondiente."*
 
+### 2.4-bis Acto 3-bis — La ficha del trabajador (3-4 min) ⭐ *gancho fuerte para PRL y RRHH*
+
+> **Cuándo usarlo**: si tienes en sala a alguien de PRL, Recursos Humanos o dirección. Si la audiencia es solo IT/OT, puedes saltártelo.
+
+**Pantalla**: desde la lista de Workers, botón "Ver ficha" sobre un operario con histórico interesante.
+
+**Cabecera (sidebar)**:
+> *"Esta es la ficha completa de un operario. A la izquierda lo importante para localizarlo o llamarlo: foto, empresa, su rol, teléfono clicable, email, supervisor primario y de respaldo, fecha de alta."*
+
+**Resaltar el chip rojo "PRL caducado"** (si el operario lo tiene):
+> *"Y aquí, en rojo, una señal que vale oro para PRL: este operario tiene la formación de prevención caducada hace X días. El sistema lo marca automáticamente. Cuando llega Inspección de Trabajo, no hay que rebuscar en hojas de cálculo: está aquí."*
+
+**Tab "Resumen"**:
+> *"Las últimas 24 horas en un golpe de vista. Cuántas alertas de zona DANGER ha disparado, cuántas RESTRICTED, cuánto tiempo ha pasado en zonas peligrosas, si ha pulsado el botón de pánico. Y el score de riesgo a 30 días, que ahora os enseño en detalle."*
+
+**Tab "Histórico"** — la joya visual:
+> *"Aquí podemos reconstruir cualquier día. Elijo una fecha — pongamos ayer. El sistema me dibuja sobre un plano top-down la ruta que hizo este operario, hora a hora. En azul claro empieza la jornada, en azul oscuro termina. Los puntos rojos son cada vez que entró en una zona peligrosa o restringida."*
+
+(Si tienes datos, mueves el slider horario para mostrar un rango concreto.)
+
+> *"Y debajo, una tabla con cuánto tiempo total pasó en cada zona. Útil para detectar patrones: 'oye, este operario pasa media hora al día en una zona donde sólo debería pasar dos minutos'."*
+
+**Tab "Perfil de riesgo"** — el activo comercial:
+> *"Aquí es donde el sistema deja de ser un visor de posiciones y se convierte en una herramienta de gestión. Score de riesgo de 0 a 10. Este operario tiene un 6,4 — nivel ALTO. ¿Por qué? El desglose lo explica: 14 entradas en zonas DANGER (×5 puntos cada una), 3 SOS en el último mes, 47 minutos acumulados dentro de zonas peligrosas. Y como ha entrado más de tres veces a la misma zona, se aplica un factor de reincidencia."*
+
+> *"Esto no es un número que me invento. Es una métrica reproducible, comparable entre operarios y empresas. Cuando dirección os pregunte 'oye, ¿qué tal nuestra contrata X?', tenéis un número con qué responder. Cuando PRL os pregunte 'a quién daríamos formación de refresco?', tenéis ranking."*
+
+**Tab "Incidentes"**:
+> *"Y el log completo, exportable, listo para cualquier auditoría. Cada entrada en zona, cada SOS, cada confirmación. No hay forma de discutir lo que pasó."*
+
 ### 2.5 Acto 4 — Capacidades futuras (2-3 min) — opcional, según tiempo y audiencia
 
 > **Importante**: aclarar qué está implementado y qué es roadmap. Honestidad vende.
 
 > *"Lo que habéis visto está vivo y funciona. Estas son las siguientes piezas que están en desarrollo o planificadas para vuestro caso concreto."*
 
-Mencionar 3-4 capacidades del roadmap visible (sin entrar en detalle):
+Mencionar 4-5 capacidades del roadmap visible (sin entrar en detalle):
 
-- **Pantalla de vigilante dedicada** — todas las alertas, foto, ubicación, ACK/Llamar/Falsa alarma
+- **Pantalla de vigilante dedicada** — todas las alertas, foto, ubicación, ACK/Llamar/Falsa alarma, pensada para monitor grande de sala de control
+- **Replay temporal** — *"Si pasa un incidente a las 14:23, puedo rebobinar la planta hasta ese momento exacto y ver qué hizo cada uno los 10 minutos previos. Para investigación post-incidente y para formación interna no tiene precio."*
 - **Detector de evacuación** — *"En una emergencia real, saber cuántos quedan dentro y dónde estaban es lo que salva vidas. Llegamos al punto de encuentro, vemos: 47 de 52, faltan 5 — y vemos dónde estaban hace 30 segundos."*
 - **Modulación inteligente de severity** — *"No es lo mismo un operario de mantenimiento entrando en una máquina parada con LOTO que un operario de producción entrando en la misma máquina en marcha. Lo segundo es alerta máxima, lo primero es trabajo planificado. El sistema lo distingue cruzando con los partes."*
-- **Heatmap de incidentes y dashboard de KPIs** — *"Cada mes os llega un informe: estas son vuestras 3 zonas más conflictivas, este operario reincide, esta turno tiene más incidencias. Datos para tomar decisiones, no opiniones."*
+- **Heatmap de incidentes y reportes por contrata** — *"Cada mes os llega un informe: estas son vuestras 3 zonas más conflictivas, este operario reincide, esta empresa contratista concentra el 60% de las alertas. Datos para negociar con contratas, no opiniones."*
+- **Asistente IA privado local** — *"Imaginaos un chat dentro de la app donde escribís 'enséñame todas las entradas en la zona del reactor de la semana pasada' o 'genera el informe PRL del mes' y el sistema os contesta. Funciona con un modelo de IA corriendo en una máquina dentro de vuestra fábrica, sin enviar nada al cloud. Las localizaciones de vuestros trabajadores no salen de aquí dentro."*
 
 **Cierre del acto**:
-> *"Y luego están las cosas que están en estudio según vuestras necesidades concretas: app móvil para mánagers, integración con vuestro SCADA, geo-localización de documentación de seguridad por zona… Os preparo un roadmap específico cuando tengamos clara vuestra prioridad."*
+> *"Y luego están las cosas que están en estudio según vuestras necesidades concretas: integración con vuestras cámaras existentes, tags para vehículos como las palas y las carretillas, app móvil para mánagers, integración con vuestro SCADA, geo-localización de documentación de seguridad por zona… Os preparo un roadmap específico cuando tengamos clara vuestra prioridad."*
 
 ### 2.6 Acto 5 — Cierre (3-5 min)
 

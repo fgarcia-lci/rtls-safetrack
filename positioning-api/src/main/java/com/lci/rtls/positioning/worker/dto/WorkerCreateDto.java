@@ -23,6 +23,16 @@ public record WorkerCreateDto(
         @Size(max = 36) String supervisorUserId,
         LocalDate hireDate,
         @Size(max = 500) String photoUrl,
-        String notes
+        String notes,
+        // --- Campos V13 (todos opcionales en creación) ---
+        Boolean isWorkerInPlant,
+        Boolean isSupervisor,
+        Boolean isCompanyManager,
+        Long supervisorId,
+        Long backupSupervisorId,
+        Long companyId,
+        LocalDate lastPrlTrainingDate,
+        Integer prlValidMonths,
+        String supervisorNotes
 ) {
 }

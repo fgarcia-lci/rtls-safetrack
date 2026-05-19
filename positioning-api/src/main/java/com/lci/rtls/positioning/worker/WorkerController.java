@@ -1,7 +1,9 @@
 package com.lci.rtls.positioning.worker;
 
+import com.lci.rtls.positioning.worker.dto.RiskScoreDto;
 import com.lci.rtls.positioning.worker.dto.WorkerCreateDto;
 import com.lci.rtls.positioning.worker.dto.WorkerDto;
+import com.lci.rtls.positioning.worker.dto.WorkerHistoryDto;
 import com.lci.rtls.positioning.worker.dto.WorkerUpdateDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +39,8 @@ import java.net.URI;
 public class WorkerController {
 
     private final WorkerService service;
+    private final WorkerHistoryService historyService;
+    private final WorkerRiskScoreService riskScoreService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','USER')")
@@ -75,5 +79,41 @@ public class WorkerController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         service.softDelete(id);
+    }
+
+    /**
+     * Histórico del trabajador entre {@code from} y {@code to} (ambos en ISO
+     * instant, ej. {@code 2026-05-18T00:00:00Z}). Resolución del downsampling
+     * de posiciones se elige automáticamente según el rango si no se pasa
+     * {@code resolutionSeconds}.
+     *
+     * <p>Cap en el backend: {@code from} se sube al límite de retención si
+     * va más atrás. Devuelve 400 si {@code to <= from}.
+     */
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','USER')")
+    public WorkerHistoryDto history(
+            @PathVariable Long id,
+            @RequestParam java.time.Instant from,
+            @RequestParam java.time.Instant to,
+            @RequestParam(required = false) Integer resolutionSeconds
+    ) {
+        return historyService.getHistory(id, from, to, resolutionSeconds);
+    }
+
+    /**
+     * Score de riesgo del trabajador para el rango (default últimos 30 días).
+     * Devuelve raw + normalizado 0–10 + breakdown + top zonas conflictivas.
+     */
+    @GetMapping("/{id}/risk-score")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','USER')")
+    public RiskScoreDto riskScore(
+            @PathVariable Long id,
+            @RequestParam(required = false) java.time.Instant from,
+            @RequestParam(required = false) java.time.Instant to
+    ) {
+        java.time.Instant rangeTo = to != null ? to : java.time.Instant.now();
+        java.time.Instant rangeFrom = from != null ? from : rangeTo.minus(java.time.Duration.ofDays(30));
+        return riskScoreService.compute(id, rangeFrom, rangeTo);
     }
 }

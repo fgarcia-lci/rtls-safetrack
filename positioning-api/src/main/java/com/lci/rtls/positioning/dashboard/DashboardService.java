@@ -51,7 +51,11 @@ public class DashboardService {
         Instant last7d = now.minus(Duration.ofDays(7));
 
         // --- Plantilla ---
+        // Filtramos isWorkerInPlant porque pos_persons también contiene
+        // supervisores y managers de empresa (V13), que no cuentan como
+        // "trabajadores en planta".
         List<Worker> workers = workerRepo.findAll().stream()
+                .filter(Worker::isWorkerInPlant)
                 .filter(Worker::isActive)
                 .toList();
         int workersTotal = workers.size();

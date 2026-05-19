@@ -6,6 +6,7 @@ import type {
   WorkerCreatePayload,
   WorkerUpdatePayload,
 } from '../types/worker';
+import type { RiskScore, WorkerHistory } from '../types/workerHistory';
 
 export interface WorkerListParams {
   search?: string;
@@ -39,5 +40,29 @@ export const workerService = {
 
   async softDelete(id: number): Promise<void> {
     await api.delete(`/v1/workers/${id}`);
+  },
+
+  /**
+   * Histórico completo (posiciones + eventos + SOS + tiempo en zona) entre
+   * dos timestamps ISO. Si rango es grande, el backend reduce las posiciones
+   * — se puede forzar resolución fina con resolutionSeconds.
+   */
+  async getHistory(id: number, from: string, to: string, resolutionSeconds?: number): Promise<WorkerHistory> {
+    const params: Record<string, string | number> = { from, to };
+    if (resolutionSeconds != null) params.resolutionSeconds = resolutionSeconds;
+    const { data } = await api.get<WorkerHistory>(`/v1/workers/${id}/history`, { params });
+    return data;
+  },
+
+  /**
+   * Risk score compuesto. Sin parámetros = últimos 30 días. Se puede acotar
+   * con from/to ISO.
+   */
+  async getRiskScore(id: number, from?: string, to?: string): Promise<RiskScore> {
+    const params: Record<string, string> = {};
+    if (from) params.from = from;
+    if (to) params.to = to;
+    const { data } = await api.get<RiskScore>(`/v1/workers/${id}/risk-score`, { params });
+    return data;
   },
 };

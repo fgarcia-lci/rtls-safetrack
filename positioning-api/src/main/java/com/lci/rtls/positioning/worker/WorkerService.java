@@ -1,5 +1,7 @@
 package com.lci.rtls.positioning.worker;
 
+import com.lci.rtls.positioning.company.Company;
+import com.lci.rtls.positioning.company.CompanyRepository;
 import com.lci.rtls.positioning.worker.dto.WorkerCreateDto;
 import com.lci.rtls.positioning.worker.dto.WorkerDto;
 import com.lci.rtls.positioning.worker.dto.WorkerUpdateDto;
@@ -18,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class WorkerService {
 
     private final WorkerRepository repo;
+    private final CompanyRepository companyRepo;
 
     @Transactional(readOnly = true)
     public Page<WorkerDto> list(String search, CompanyType companyType, Boolean isActive, Pageable pageable) {
@@ -50,7 +53,15 @@ public class WorkerService {
                 .photoUrl(dto.photoUrl())
                 .isActive(true)
                 .notes(dto.notes())
+                // V13: defaults razonables si el cliente no los manda
+                .workerInPlant(dto.isWorkerInPlant() == null || dto.isWorkerInPlant())
+                .supervisor(Boolean.TRUE.equals(dto.isSupervisor()))
+                .companyManager(Boolean.TRUE.equals(dto.isCompanyManager()))
+                .lastPrlTrainingDate(dto.lastPrlTrainingDate())
+                .prlValidMonths(dto.prlValidMonths() == null ? 12 : dto.prlValidMonths())
+                .supervisorNotes(dto.supervisorNotes())
                 .build();
+        applyRelations(w, dto.supervisorId(), dto.backupSupervisorId(), dto.companyId());
         Worker saved = repo.save(w);
         log.info("Worker creado id={} employeeCode={}", saved.getId(), saved.getEmployeeCode());
         return WorkerDto.from(saved);
@@ -71,7 +82,49 @@ public class WorkerService {
         w.setPhotoUrl(dto.photoUrl());
         w.setActive(dto.isActive());
         w.setNotes(dto.notes());
+        // V13: solo actualizamos los flags/relaciones si vienen en el payload
+        // (Boolean null = "no tocar"). Esto permite a la UI mandar updates
+        // parciales sin sobreescribir flags que no controla.
+        if (dto.isWorkerInPlant() != null) w.setWorkerInPlant(dto.isWorkerInPlant());
+        if (dto.isSupervisor() != null) w.setSupervisor(dto.isSupervisor());
+        if (dto.isCompanyManager() != null) w.setCompanyManager(dto.isCompanyManager());
+        if (dto.lastPrlTrainingDate() != null) w.setLastPrlTrainingDate(dto.lastPrlTrainingDate());
+        if (dto.prlValidMonths() != null) w.setPrlValidMonths(dto.prlValidMonths());
+        if (dto.supervisorNotes() != null) w.setSupervisorNotes(dto.supervisorNotes());
+        applyRelations(w, dto.supervisorId(), dto.backupSupervisorId(), dto.companyId());
         return WorkerDto.from(repo.save(w));
+    }
+
+    /**
+     * Aplica los FK opcionales {@code supervisorId / backupSupervisorId / companyId}
+     * resolviéndolos a entidades. {@code null} = "no tocar" en update. Si la persona
+     * referenciada no existe, devuelve 400 al cliente.
+     */
+    private void applyRelations(Worker w, Long supervisorId, Long backupSupervisorId, Long companyId) {
+        if (supervisorId != null) {
+            w.setSupervisorPerson(loadSupervisorOrThrow(supervisorId));
+        }
+        if (backupSupervisorId != null) {
+            w.setBackupSupervisorPerson(loadSupervisorOrThrow(backupSupervisorId));
+        }
+        if (companyId != null) {
+            w.setCompany(loadCompanyOrThrow(companyId));
+        }
+    }
+
+    private Worker loadSupervisorOrThrow(Long id) {
+        Worker s = repo.findById(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.BAD_REQUEST, "Persona supervisor " + id + " no encontrada"));
+        if (!s.isSupervisor()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Persona " + id + " no está marcada como supervisor (is_supervisor=false)");
+        }
+        return s;
+    }
+
+    private Company loadCompanyOrThrow(Long id) {
+        return companyRepo.findById(id).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.BAD_REQUEST, "Empresa " + id + " no encontrada"));
     }
 
     @Transactional

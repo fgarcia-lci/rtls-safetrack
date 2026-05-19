@@ -24,6 +24,16 @@ public record WorkerUpdateDto(
         LocalDate hireDate,
         @Size(max = 500) String photoUrl,
         @NotNull Boolean isActive,
-        String notes
+        String notes,
+        // --- Campos V13 (opcionales en update) ---
+        Boolean isWorkerInPlant,
+        Boolean isSupervisor,
+        Boolean isCompanyManager,
+        Long supervisorId,
+        Long backupSupervisorId,
+        Long companyId,
+        LocalDate lastPrlTrainingDate,
+        Integer prlValidMonths,
+        String supervisorNotes
 ) {
 }

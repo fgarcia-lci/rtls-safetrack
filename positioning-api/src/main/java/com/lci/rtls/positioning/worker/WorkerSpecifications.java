@@ -18,6 +18,12 @@ public final class WorkerSpecifications {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
+            // El endpoint /v1/workers solo devuelve trabajadores reales — las
+            // personas que sólo son supervisor o manager se acceden vía
+            // /v1/persons (admin) o /v1/supervisors. Esto evita que la lista
+            // de "trabajadores en planta" se contamine con roles auxiliares.
+            predicates.add(cb.isTrue(root.get("workerInPlant")));
+
             if (StringUtils.hasText(search)) {
                 String like = "%" + search.toLowerCase() + "%";
                 predicates.add(cb.or(
@@ -33,7 +39,7 @@ public final class WorkerSpecifications {
                 predicates.add(cb.equal(root.get("isActive"), isActive));
             }
 
-            return predicates.isEmpty() ? cb.conjunction() : cb.and(predicates.toArray(new Predicate[0]));
+            return cb.and(predicates.toArray(new Predicate[0]));
         };
     }
 }

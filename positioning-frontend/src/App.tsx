@@ -11,6 +11,7 @@ import { Dashboard } from './pages/Dashboard/Dashboard';
 // para no recargar el modelo xeokit en cada navegación). La ruta /live
 // existe en el Routes con element={null} para que el path sea válido.
 import { Workers } from './pages/Workers/Workers';
+import { WorkerDetail } from './pages/Workers/WorkerDetail';
 import { Tags } from './pages/Tags/Tags';
 import { Zones } from './pages/Zones/Zones';
 import { ZoneEditorPage } from './pages/Zones/ZoneEditorPage';
@@ -37,6 +38,7 @@ function App() {
               <Route index element={<Dashboard />} />
               <Route path="live" element={null} />
               <Route path="workers" element={<Workers />} />
+              <Route path="workers/:id" element={<WorkerDetail />} />
               <Route path="tags" element={<Tags />} />
               <Route path="zones" element={<Zones />} />
               <Route path="zones/editor" element={<ZoneEditorPage />} />

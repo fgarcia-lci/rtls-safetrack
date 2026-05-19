@@ -27,6 +27,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   MyLocation as MyLocationIcon,
+  Person as PersonIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -250,6 +251,14 @@ export function Workers() {
                   </TableCell>
                   <TableCell align="right">
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      <Tooltip title={t('workers.actions.viewDetail', 'Ver ficha')}>
+                        <IconButton
+                          size="small"
+                          onClick={() => navigate(`/workers/${w.id}`)}
+                        >
+                          <PersonIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title={t('workers.actions.locateOn3D', 'Localizar en 3D')}>
                         <span>
                           <IconButton

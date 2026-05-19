@@ -62,6 +62,15 @@ spring:
 
 # RTLS Safetrack — config propia
 rtls:
+  # Retención de datos. El TTL se aplica como índice Mongo al arrancar.
+  # Cambiar el valor y reiniciar: Mongo recrea el índice con la nueva
+  # expiración (los documentos ya almacenados se borran cuando entran en
+  # ventana de expiración del nuevo TTL).
+  retention:
+    # Histórico de posiciones (~3 GB/semana con 30 personas a 1 Hz). Subir
+    # si queremos ventanas más largas en heatmap/ruta del trabajador; bajar
+    # si la planta es enorme y el almacenamiento aprieta.
+    positions-history-days: 7
   auth:
     # URL desde la que el api fetchea el JWKS para verificar firmas de JWT.
     # En docker se sobreescribe a host.docker.internal.

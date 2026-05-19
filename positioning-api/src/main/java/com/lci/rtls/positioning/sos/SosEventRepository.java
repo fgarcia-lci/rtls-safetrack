@@ -18,4 +18,11 @@ public interface SosEventRepository extends JpaRepository<SosEvent, Long> {
     /** Histórico paginado para auditoría. */
     @Query("SELECT s FROM SosEvent s WHERE s.plantId = :plantId ORDER BY s.triggeredAt DESC")
     List<SosEvent> findAllByPlant(@Param("plantId") String plantId);
+
+    /** SOS de un trabajador en un rango (ficha de operario). */
+    @Query("SELECT s FROM SosEvent s WHERE s.workerId = :workerId " +
+           "AND s.triggeredAt >= :from AND s.triggeredAt < :to ORDER BY s.triggeredAt ASC")
+    List<SosEvent> findByWorkerAndDateRange(@Param("workerId") Long workerId,
+                                            @Param("from") java.time.Instant from,
+                                            @Param("to") java.time.Instant to);
 }

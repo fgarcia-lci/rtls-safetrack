@@ -48,4 +48,28 @@ public interface ProximityEventRepository
            "WHERE e.plantId = :plantId AND e.acknowledgedAt IS NOT NULL AND e.enteredAt >= :from")
     Double avgMttrSecondsByPlant(@Param("plantId") String plantId,
                                  @Param("from") Instant from);
+
+    // ===== Queries para ficha de trabajador =====
+
+    /** Eventos de un trabajador en un rango — para tab Histórico/Incidentes. */
+    List<ProximityEvent> findByWorkerIdAndEnteredAtBetweenOrderByEnteredAtAsc(
+            Long workerId, Instant from, Instant to);
+
+    /** Conteo de entradas por trabajador en rango, agrupado por zone_id.
+     *  Útil para el risk score y "top zonas conflictivas del operario". */
+    @Query("SELECT e.zoneId, COUNT(e) FROM ProximityEvent e " +
+           "WHERE e.workerId = :workerId AND e.enteredAt >= :from AND e.enteredAt < :to " +
+           "GROUP BY e.zoneId")
+    List<Object[]> countByWorkerGroupedByZone(@Param("workerId") Long workerId,
+                                              @Param("from") Instant from,
+                                              @Param("to") Instant to);
+
+    /** Suma de duración (segundos) por trabajador agrupado por zone_id. */
+    @Query("SELECT e.zoneId, COALESCE(SUM(e.durationSec), 0) FROM ProximityEvent e " +
+           "WHERE e.workerId = :workerId AND e.enteredAt >= :from AND e.enteredAt < :to " +
+           "AND e.durationSec IS NOT NULL " +
+           "GROUP BY e.zoneId")
+    List<Object[]> totalDurationByWorkerGroupedByZone(@Param("workerId") Long workerId,
+                                                      @Param("from") Instant from,
+                                                      @Param("to") Instant to);
 }

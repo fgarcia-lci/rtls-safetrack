@@ -38,8 +38,12 @@ public class SosEvent {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /** FK a {@code pos_workers.id}. NULL si el tag no estaba asignado al pulsar. */
-    @Column(name = "worker_id")
+    /**
+     * FK a {@code pos_persons.id}. NULL si el tag no estaba asignado al pulsar.
+     * Columna renombrada en V13. Campo Java mantiene nombre {@code workerId}
+     * por compatibilidad con services/DTOs existentes.
+     */
+    @Column(name = "person_id")
     private Long workerId;
 
     @Column(name = "tag_id", nullable = false)

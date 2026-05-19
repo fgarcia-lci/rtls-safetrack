@@ -203,7 +203,7 @@
     "unfollow": "Dejar de seguir",
     "sosSimulateConfirm": "¿Disparar SOS de demo para este operario?\nSe lanzará la sirena en toda la app.",
     "sosSimulateError": "Error al disparar SOS. Revisa la consola.",
-    "sosSimulateButton": "🆘 Disparar SOS (demo)",
+    "sosSimulateButton": "Disparar SOS (demo)",
     "workerSection": "Operario",
     "fields": {
       "employeeCode": "Código",
@@ -289,7 +289,7 @@
     "disconnected": "Desconectado"
   },
   "sos": {
-    "drawerTitle": "🆘 SOS activos",
+    "drawerTitle": "SOS activos",
     "emptyActive": "No hay SOS activos. Todo en orden.",
     "panicMessage": "El operario ha pulsado el botón de pánico",
     "pressedAt": "Pulsado a las",

@@ -19,6 +19,18 @@ export interface Worker {
   updatedAt: string;
   createdBy?: string | null;
   updatedBy?: string | null;
+  // V13 — roles unificados + supervisor + PRL
+  isWorkerInPlant?: boolean;
+  isSupervisor?: boolean;
+  isCompanyManager?: boolean;
+  supervisorId?: number | null;
+  supervisorName?: string | null;
+  backupSupervisorId?: number | null;
+  backupSupervisorName?: string | null;
+  companyId?: number | null;
+  lastPrlTrainingDate?: string | null;
+  prlValidMonths?: number;
+  supervisorNotes?: string | null;
 }
 
 export interface WorkerCreatePayload {
