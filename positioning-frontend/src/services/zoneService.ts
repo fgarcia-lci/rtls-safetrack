@@ -74,4 +74,17 @@ export const zoneService = {
     const { data } = await api.post<SafetyZone>(path);
     return data;
   },
+
+  /** Próximo código libre para esta planta. Patrón ZONE-####. */
+  async getNextCode(plantId: string): Promise<string> {
+    const { data } = await api.get<{ code: string }>('/v1/zones/next-code', { params: { plantId } });
+    return data.code;
+  },
+
+  async checkCode(plantId: string, code: string): Promise<boolean> {
+    const { data } = await api.get<{ available: boolean }>('/v1/zones/check-code', {
+      params: { plantId, code },
+    });
+    return data.available;
+  },
 };

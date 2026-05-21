@@ -109,13 +109,30 @@ export async function revokeToken(token: string): Promise<void> {
   });
 }
 
-export function performLogout(): void {
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = `${AUTH_CONFIG.authServerUrl}/logout`;
-  form.style.display = 'none';
-  document.body.appendChild(form);
-  form.submit();
+export async function performLogout(): Promise<void> {
+  // POST a `/logout` para invalidar la sesión en el auth-server. Usamos
+  // `fetch` con `credentials: 'include'` (NO submit de un form) para
+  // mantener el control de la navegación: tras la llamada, nosotros
+  // redirigimos al login.
+  //
+  // Antes hacíamos un form.submit() que dejaba al auth-server gestionar
+  // la redirección posterior. Spring Authorization Server tras `/logout`
+  // intenta llevar al `logoutSuccessUrl` configurado; si en el despliegue
+  // ese valor está vacío o apunta a una URL no válida, Chrome muestra
+  // `ERR_INVALID_REDIRECT` y el usuario se queda atascado en
+  // `http://localhost:9000/logout`.
+  try {
+    await fetch(`${AUTH_CONFIG.authServerUrl}/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      // No body — Spring Security cierra la sesión asociada a la cookie.
+    });
+  } catch {
+    // Si el auth-server no responde (por ejemplo, está caído), igualmente
+    // continuamos: el estado local ya está limpio y al volver a login
+    // se forzará re-autenticación.
+  }
+  window.location.href = '/login?logout=true';
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

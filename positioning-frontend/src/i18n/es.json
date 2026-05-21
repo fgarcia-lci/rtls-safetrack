@@ -33,9 +33,11 @@
     "dashboard": "Panel",
     "live": "Vista en tiempo real",
     "workers": "Trabajadores",
+    "companies": "Empresas",
     "tags": "Tags",
     "zones": "Zonas de seguridad",
     "events": "Eventos",
+    "plantViews": "Vistas de planta",
     "settings": "Configuración"
   },
   "plant": {

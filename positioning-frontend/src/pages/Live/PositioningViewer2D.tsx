@@ -3,6 +3,7 @@ import { Box, Typography, Paper } from '@mui/material';
 import { usePositionsStream } from '../../hooks/usePositionsStream';
 import { proximityStream } from '../../services/proximityStream';
 import { zoneService } from '../../services/zoneService';
+import { plantViewService } from '../../services/plantViewService';
 import { zoneFillCss } from '../../utils/zoneColors';
 import { floorHeightM, formatHeight } from '../../utils/positionHeight';
 import type { Quality } from '../../types/positions';
@@ -15,6 +16,8 @@ interface Props {
   plantView?: PlantView | null;
   onAvatarClick?: (tagId: string) => void;
   onZoneClick?: (zone: SafetyZone) => void;
+  /** tagSerials con SOS activo — se pinta "SOS" parpadeante encima. */
+  sosActiveTagIds?: Set<string>;
 }
 
 const QUALITY_COLOR: Record<Quality, string> = {
@@ -30,8 +33,24 @@ interface BBox {
   minX: number; minY: number; maxX: number; maxY: number;
 }
 
-export function PositioningViewer2D({ plantId, plantView, onAvatarClick, onZoneClick }: Props) {
+export function PositioningViewer2D({ plantId, plantView, onAvatarClick, onZoneClick, sosActiveTagIds }: Props) {
   const { tagIds, getInterpolated, getLast } = usePositionsStream(plantId);
+
+  // Inyecta una vez las keyframes del parpadeo SOS en el SVG 2D. Misma
+  // técnica que en el visor 3D pero animación que solo toca opacity
+  // (los <g> SVG con transform="translate(...)" se rompen si los toca
+  // la animación).
+  useEffect(() => {
+    const id = 'rtls-sos-2d-blink-keyframes';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      @keyframes rtls-sos-2d-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+      .rtls-sos-2d-blink { animation: rtls-sos-2d-blink 0.7s ease-in-out infinite; }
+    `;
+    document.head.appendChild(style);
+  }, []);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const circlesRef = useRef<Map<string, SVGCircleElement>>(new Map());
@@ -42,6 +61,11 @@ export function PositioningViewer2D({ plantId, plantView, onAvatarClick, onZoneC
   const [hoveredTag, setHoveredTag] = useState<string | null>(null);
   const [hoveredZoneId, setHoveredZoneId] = useState<number | null>(null);
   const [zones, setZones] = useState<SafetyZone[]>([]);
+  const [floorplan, setFloorplan] = useState<{
+    svg: string;
+    bbox: { minX: number; minY: number; maxX: number; maxY: number };
+    flipY: boolean;
+  } | null>(null);
   const [, setTick] = useState(0);
 
   // Carga inicial de zonas activas. Suscripción al proximityStream para
@@ -53,6 +77,38 @@ export function PositioningViewer2D({ plantId, plantView, onAvatarClick, onZoneC
       if (cancelled) return;
       setZones(zs);
     }).catch((err) => console.error('[2D] zones error', err));
+    return () => { cancelled = true; };
+  }, [plantId]);
+
+  // Carga el FLOORPLAN_2D activo de la planta (si lo hay) y descarga su SVG
+  // para pintarlo como fondo. El SVG está en coordenadas mundo (metros);
+  // si svgFlipY=true (export CAD Y-up), aplicamos transform al renderizarlo.
+  useEffect(() => {
+    let cancelled = false;
+    plantViewService.listForPlant(plantId)
+      .then((views) => {
+        const fp = views.find((v) => v.type === 'FLOORPLAN_2D');
+        if (!fp || fp.worldBboxMinX == null) {
+          setFloorplan(null);
+          return null;
+        }
+        return fetch(plantViewService.assetUrl(fp.id), { credentials: 'include' })
+          .then((res) => res.ok ? res.text() : Promise.reject(new Error('asset fetch failed')))
+          .then((svg) => {
+            if (cancelled) return;
+            setFloorplan({
+              svg: extractSvgInner(svg),
+              bbox: {
+                minX: fp.worldBboxMinX!,
+                minY: fp.worldBboxMinY!,
+                maxX: fp.worldBboxMaxX!,
+                maxY: fp.worldBboxMaxY!,
+              },
+              flipY: fp.svgFlipY ?? true,
+            });
+          });
+      })
+      .catch((err) => console.error('[2D] floorplan error', err));
     return () => { cancelled = true; };
   }, [plantId]);
 
@@ -112,6 +168,20 @@ export function PositioningViewer2D({ plantId, plantView, onAvatarClick, onZoneC
         }
       }
 
+      // Extender bbox para incluir el plano 2D — así al cargar la página
+      // sin tags activos y sin zonas, el plano se ve igualmente.
+      if (floorplan) {
+        const fb = floorplan.bbox;
+        if (!bbox) {
+          bbox = { minX: fb.minX, minY: fb.minY, maxX: fb.maxX, maxY: fb.maxY };
+        } else {
+          bbox.minX = Math.min(bbox.minX, fb.minX);
+          bbox.minY = Math.min(bbox.minY, fb.minY);
+          bbox.maxX = Math.max(bbox.maxX, fb.maxX);
+          bbox.maxY = Math.max(bbox.maxY, fb.maxY);
+        }
+      }
+
       if (bbox && svgRef.current) {
         const w = bbox.maxX - bbox.minX + 2 * PADDING;
         const h = bbox.maxY - bbox.minY + 2 * PADDING;
@@ -136,7 +206,7 @@ export function PositioningViewer2D({ plantId, plantView, onAvatarClick, onZoneC
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [tagIds, getInterpolated, zones]);
+  }, [tagIds, getInterpolated, zones, floorplan]);
 
   // Pre-calcula el `points="x,y x,y..."` de cada zona (no cambia tras
   // cargar; solo color/factor cambian en el tick).
@@ -149,7 +219,7 @@ export function PositioningViewer2D({ plantId, plantView, onAvatarClick, onZoneC
   }, [zones]);
 
   return (
-    <Box sx={{ position: 'relative', width: '100%', height: '100%', bgcolor: 'background.default' }}>
+    <Box sx={{ position: 'relative', width: '100%', height: '100%', bgcolor: '#f7f7f7' }}>
       <svg
         ref={svgRef}
         width="100%"
@@ -160,10 +230,31 @@ export function PositioningViewer2D({ plantId, plantView, onAvatarClick, onZoneC
       >
         <defs>
           <pattern id="grid" width="5" height="5" patternUnits="userSpaceOnUse">
-            <path d="M 5 0 L 0 0 0 5" fill="none" stroke="#e0e0e0" strokeWidth="0.05" />
+            {/* Relleno del cuadrito: tierra clara / crema semi-transparente.
+                Sensación de "suelo industrial" y al mismo tiempo deja pasar
+                el floorplan SVG cuando esté detrás. */}
+            <rect width="5" height="5" fill="#d4c5a0" fillOpacity="0.6" />
+            {/* Líneas marrones tierra para que la cuadrícula sobresalga sobre
+                el relleno crema. */}
+            <path d="M 5 0 L 0 0 0 5" fill="none" stroke="#8a724a" strokeOpacity="0.7" strokeWidth="0.08" />
           </pattern>
         </defs>
         <rect x="-1000" y="-1000" width="2000" height="2000" fill="url(#grid)" />
+
+        {/* Floorplan 2D — fondo en coords mundo. flipY=true convierte el
+            eje Y de CAD (up) a SVG (down) reflejando alrededor del centro
+            vertical del bbox. */}
+        {floorplan && (
+          <g
+            transform={
+              floorplan.flipY
+                ? `translate(0 ${floorplan.bbox.maxY + floorplan.bbox.minY}) scale(1 -1)`
+                : undefined
+            }
+            opacity={0.75}
+            dangerouslySetInnerHTML={{ __html: floorplan.svg }}
+          />
+        )}
 
         {/* Zonas — debajo de los avatares para no taparlos. */}
         {zones.map((zone) => (
@@ -239,6 +330,35 @@ export function PositioningViewer2D({ plantId, plantView, onAvatarClick, onZoneC
                 onMouseEnter={() => setHoveredTag(tagId)}
                 onMouseLeave={() => setHoveredTag(null)}
               />
+              {/* Etiqueta "SOS" parpadeante sobre el avatar — solo cuando
+                  el operario tiene un SOS activo. Animación CSS aplicada
+                  vía className (las keyframes las inyecta el visor 3D al
+                  cargarse el módulo en la misma sesión). */}
+              {sosActiveTagIds?.has(tagId) && (
+                <g pointerEvents="none" className="rtls-sos-2d-blink">
+                  <rect
+                    x={last.x - 1.0}
+                    y={last.y - 2.6}
+                    width={2.0}
+                    height={1.0}
+                    rx={0.2}
+                    ry={0.2}
+                    fill="#e63939"
+                    stroke="#fff"
+                    strokeWidth={0.08}
+                  />
+                  <text
+                    x={last.x}
+                    y={last.y - 1.85}
+                    fontSize="0.75"
+                    textAnchor="middle"
+                    fill="#fff"
+                    style={{ fontWeight: 900, letterSpacing: 0.15 }}
+                  >
+                    SOS
+                  </text>
+                </g>
+              )}
               {/* Pill con la altura sobre el suelo, a la derecha del
                   círculo. Pequeña y siempre visible. */}
               {heightLabel && (
@@ -297,6 +417,19 @@ export function PositioningViewer2D({ plantId, plantView, onAvatarClick, onZoneC
       )}
     </Box>
   );
+}
+
+/**
+ * Returns the inner markup of an SVG document so it can be embedded inside
+ * another `<svg>` (with our viewBox in world meters). If the input doesn't
+ * have an `<svg>` wrapper it's returned untouched.
+ */
+function extractSvgInner(svgText: string): string {
+  const open = svgText.indexOf('<svg');
+  const close = svgText.indexOf('>', open);
+  const end = svgText.lastIndexOf('</svg>');
+  if (open === -1 || close === -1 || end === -1) return svgText;
+  return svgText.substring(close + 1, end);
 }
 
 export default PositioningViewer2D;

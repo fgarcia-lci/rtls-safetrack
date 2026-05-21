@@ -4,6 +4,7 @@ import com.lci.rtls.positioning.company.dto.CompanyDto;
 import com.lci.rtls.positioning.company.dto.CompanyUpsertDto;
 import com.lci.rtls.positioning.worker.Worker;
 import com.lci.rtls.positioning.worker.WorkerRepository;
+import com.lci.rtls.positioning.worker.dto.WorkerDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -34,16 +35,27 @@ public class CompanyService {
         return toDto(load(id));
     }
 
+    /** Empleados (cualquier rol) asignados a esta empresa del catálogo. */
+    @Transactional(readOnly = true)
+    public List<WorkerDto> listWorkers(Long companyId) {
+        // Verifica primero que la empresa existe — devuelve 404 si no.
+        load(companyId);
+        return workerRepo.findByCompany_IdOrderByFullNameAsc(companyId).stream()
+                .map(WorkerDto::from)
+                .toList();
+    }
+
     @Transactional
     public CompanyDto create(CompanyUpsertDto dto) {
         repo.findByName(dto.name()).ifPresent(c -> {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe una empresa con ese nombre");
         });
-        Worker manager = loadManagerOrThrow(dto.managerPersonId());
         Company c = Company.builder()
                 .name(dto.name())
                 .type(dto.type())
-                .managerPerson(manager)
+                .phone(dto.phone())
+                .email(dto.email())
+                .managerPerson(dto.managerPersonId() != null ? loadManagerOrThrow(dto.managerPersonId()) : null)
                 .managerNotes(dto.managerNotes())
                 .isActive(dto.isActive() == null || dto.isActive())
                 .build();
@@ -64,7 +76,9 @@ public class CompanyService {
             c.setName(dto.name());
         }
         c.setType(dto.type());
-        c.setManagerPerson(loadManagerOrThrow(dto.managerPersonId()));
+        c.setPhone(dto.phone());
+        c.setEmail(dto.email());
+        c.setManagerPerson(dto.managerPersonId() != null ? loadManagerOrThrow(dto.managerPersonId()) : null);
         c.setManagerNotes(dto.managerNotes());
         if (dto.isActive() != null) c.setActive(dto.isActive());
         return toDto(repo.save(c));
@@ -101,6 +115,8 @@ public class CompanyService {
                 c.getId(),
                 c.getName(),
                 c.getType(),
+                c.getPhone(),
+                c.getEmail(),
                 mgr != null ? mgr.getId() : null,
                 mgr != null ? mgr.getFullName() : null,
                 mgr != null ? mgr.getPhone() : null,

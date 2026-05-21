@@ -12,10 +12,14 @@ import { Dashboard } from './pages/Dashboard/Dashboard';
 // existe en el Routes con element={null} para que el path sea válido.
 import { Workers } from './pages/Workers/Workers';
 import { WorkerDetail } from './pages/Workers/WorkerDetail';
+import { Companies } from './pages/Companies/Companies';
+import { CompanyDetail } from './pages/Companies/CompanyDetail';
 import { Tags } from './pages/Tags/Tags';
+import { TagDetail } from './pages/Tags/TagDetail';
 import { Zones } from './pages/Zones/Zones';
 import { ZoneEditorPage } from './pages/Zones/ZoneEditorPage';
 import { Events } from './pages/Events/Events';
+import { PlantViews } from './pages/Admin/PlantViews';
 
 function App() {
   return (
@@ -39,11 +43,15 @@ function App() {
               <Route path="live" element={null} />
               <Route path="workers" element={<Workers />} />
               <Route path="workers/:id" element={<WorkerDetail />} />
+              <Route path="companies" element={<Companies />} />
+              <Route path="companies/:id" element={<CompanyDetail />} />
               <Route path="tags" element={<Tags />} />
+              <Route path="tags/:id" element={<TagDetail />} />
               <Route path="zones" element={<Zones />} />
               <Route path="zones/editor" element={<ZoneEditorPage />} />
               <Route path="zones/editor/:id" element={<ZoneEditorPage />} />
               <Route path="events" element={<Events />} />
+              <Route path="admin/plant-views" element={<PlantViews />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

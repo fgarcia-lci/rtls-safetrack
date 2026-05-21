@@ -26,11 +26,13 @@ import {
   Dashboard as DashboardIcon,
   Visibility as LiveIcon,
   Person as WorkersIcon,
+  Business as CompaniesIcon,
   Sensors as TagsIcon,
   Warning as ZonesIcon,
   History as EventsIcon,
   Notifications as NotificationsIcon,
   Sos as SosIcon,
+  Layers as PlantViewsIcon,
 } from '@mui/icons-material';
 import { Badge, Tooltip } from '@mui/material';
 import { useTranslation } from 'react-i18next';
@@ -64,9 +66,11 @@ const navItems: NavItem[] = [
   { path: '/', labelKey: 'navigation.dashboard', icon: <DashboardIcon /> },
   { path: '/live', labelKey: 'navigation.live', icon: <LiveIcon /> },
   { path: '/workers', labelKey: 'navigation.workers', icon: <WorkersIcon /> },
+  { path: '/companies', labelKey: 'navigation.companies', icon: <CompaniesIcon /> },
   { path: '/tags', labelKey: 'navigation.tags', icon: <TagsIcon /> },
   { path: '/zones', labelKey: 'navigation.zones', icon: <ZonesIcon /> },
   { path: '/events', labelKey: 'navigation.events', icon: <EventsIcon /> },
+  { path: '/admin/plant-views', labelKey: 'navigation.plantViews', icon: <PlantViewsIcon /> },
 ];
 
 export const MainLayout: React.FC = () => {
@@ -78,6 +82,14 @@ export const MainLayout: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(!isMobile);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [sosOpen, setSosOpen] = useState(false);
+
+  // Cerrar drawers cuando el usuario cambia de página: evita que un panel
+  // queden abiertos sobre una vista a la que ya no aplican (ej. AlertsDrawer
+  // todavía pintado encima de /workers/:id tras navegar).
+  useEffect(() => {
+    setAlertsOpen(false);
+    setSosOpen(false);
+  }, [location.pathname]);
   // Stream SOS para badge en el AppBar — muestra cuántos SOS activos hay.
   const { count: sosCount } = useSosStream(config.plant.defaultId);
 

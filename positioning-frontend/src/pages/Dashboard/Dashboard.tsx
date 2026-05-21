@@ -186,6 +186,7 @@ export const Dashboard = () => {
             value={data.alertsToday}
             sub={`${data.alertsLast24h} en 24h · ${data.alertsLast7d} en 7d`}
             color={data.alertsToday > 5 ? 'warning' : 'info'}
+            onClick={() => navigate('/events')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -196,6 +197,7 @@ export const Dashboard = () => {
             sub={`${data.sosToday} disparados hoy`}
             color="error"
             highlight={data.sosActive > 0}
+            onClick={() => navigate('/events')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -238,6 +240,7 @@ export const Dashboard = () => {
             value={data.companiesPresent.length}
             sub="distintas en planta ahora"
             color="primary"
+            onClick={() => navigate('/companies')}
           />
         </Grid>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
@@ -247,6 +250,7 @@ export const Dashboard = () => {
             value={Math.max(0, data.workersTotal - data.workersWithTag)}
             sub="esperando asignación"
             color="info"
+            onClick={() => navigate('/workers')}
           />
         </Grid>
       </Grid>
@@ -273,10 +277,14 @@ export const Dashboard = () => {
                     direction="row"
                     alignItems="center"
                     spacing={1.5}
+                    onClick={() => navigate('/zones')}
                     sx={{
                       p: 1,
                       borderRadius: 1,
                       bgcolor: i === 0 ? 'warning.lighter' : 'transparent',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.15s',
+                      '&:hover': { bgcolor: 'action.hover' },
                     }}
                   >
                     <Typography variant="h6" sx={{ fontWeight: 700, color: 'warning.main', minWidth: 24 }}>
@@ -323,10 +331,14 @@ export const Dashboard = () => {
                     direction="row"
                     alignItems="center"
                     spacing={1.5}
+                    onClick={() => navigate(`/workers/${w.workerId}`)}
                     sx={{
                       p: 1,
                       borderRadius: 1,
                       bgcolor: i === 0 ? 'error.lighter' : 'transparent',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.15s',
+                      '&:hover': { bgcolor: 'action.hover' },
                     }}
                   >
                     <Typography variant="h6" sx={{ fontWeight: 700, color: 'error.main', minWidth: 24 }}>
@@ -393,6 +405,8 @@ export const Dashboard = () => {
                     label={c.companyName}
                     color={companyTypeColor(c.companyType)}
                     variant="outlined"
+                    onClick={c.companyId ? () => navigate(`/companies/${c.companyId}`) : undefined}
+                    sx={c.companyId ? { cursor: 'pointer' } : undefined}
                   />
                 ))}
               </Stack>

@@ -8,6 +8,7 @@ import {
   buildSphereGeometry,
   buildCylinderGeometry,
   buildGridGeometry,
+  buildPlaneGeometry,
   PhongMaterial,
   math,
 } from '@xeokit/xeokit-sdk';
@@ -46,6 +47,18 @@ interface Props {
   initialCameraLook?: [number, number, number] | null;
   /** Altura total del avatar (cuerpo + cabeza) en metros. Default 2 m. */
   avatarHeightM?: number;
+  /** Distancia de la cámara al operario al hacer fly-to / follow (m). */
+  cameraFollowDistance?: number;
+  /** Azimuth (rotación horizontal) en grados — 0=N, 90=E, 180=S, 270=O. */
+  cameraFollowAzimuthDeg?: number;
+  /** Elevación en grados — 0=ras del suelo, 90=cenital. */
+  cameraFollowElevationDeg?: number;
+  /**
+   * Set de tagSerials con SOS activo en este instante. Cuando un serial
+   * está aquí, se pinta un texto "SOS" parpadeante en rojo encima de su
+   * pildora. Live → del WS de SOS. Replay → de activeSosEvents.
+   */
+  sosActiveTagIds?: Set<string>;
 }
 
 const QUALITY_COLOR: Record<Quality, [number, number, number]> = {
@@ -195,7 +208,27 @@ export function PositioningViewer3D({
   initialCameraEye = null,
   initialCameraLook = null,
   avatarHeightM = 2.0,
+  cameraFollowDistance = 25,
+  cameraFollowAzimuthDeg = 45,
+  cameraFollowElevationDeg = 30,
+  sosActiveTagIds,
 }: Props) {
+  // Inyecta las keyframes del parpadeo "SOS" una sola vez al cargar este
+  // componente. No queremos importar emotion/styled aquí solo para esto.
+  useEffect(() => {
+    const id = 'rtls-sos-blink-keyframes';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      @keyframes rtls-sos-blink {
+        0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+        50% { opacity: 0.35; transform: translateX(-50%) scale(1.08); }
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const navCubeCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
@@ -213,6 +246,8 @@ export function PositioningViewer3D({
   const loadedLayersRef = useRef<Set<string>>(new Set());
   const cameraFramedRef = useRef(false);
   const floorMeshRef = useRef<Mesh | null>(null);
+  /** Plano sólido color tierra que rellena los cuadros del grid (debajo de las líneas). */
+  const floorSolidMeshRef = useRef<Mesh | null>(null);
   const rafRef = useRef<number | null>(null);
   // Camera-follow: prop como ref para que el tick siempre use el último valor.
   const followingSerialRef = useRef<string | null>(followingSerial);
@@ -320,6 +355,17 @@ export function PositioningViewer3D({
   useEffect(() => {
     avatarScaleRef.current = avatarHeightM / NATURAL_AVATAR_HEIGHT;
   }, [avatarHeightM, NATURAL_AVATAR_HEIGHT]);
+
+  // Refs reactivas con la config de cámara para localizar/seguir operario.
+  // Las usan flyToAvatar (creada una vez al montar viewer) y el tick de
+  // follow — ambos cierran sobre estos refs para coger siempre el valor
+  // más reciente al cambiar sliders.
+  const camFollowDistRef = useRef(cameraFollowDistance);
+  const camFollowAzRef = useRef(cameraFollowAzimuthDeg);
+  const camFollowElevRef = useRef(cameraFollowElevationDeg);
+  useEffect(() => { camFollowDistRef.current = cameraFollowDistance; }, [cameraFollowDistance]);
+  useEffect(() => { camFollowAzRef.current = cameraFollowAzimuthDeg; }, [cameraFollowAzimuthDeg]);
+  useEffect(() => { camFollowElevRef.current = cameraFollowElevationDeg; }, [cameraFollowElevationDeg]);
   useEffect(() => {
     // Al cambiar la altura, eliminar avatares para que el tick los recree.
     for (const avatar of avatarsRef.current.values()) {
@@ -546,17 +592,30 @@ export function PositioningViewer3D({
       const interp = interpFn(tagId);
       if (!interp) return;
       const s = avatarScaleRef.current || 1;
-      const headTopY = interp.z + BODY_HEIGHT * s + HEAD_RADIUS * 2 * s;
       const look = [interp.x, interp.z + BODY_HEIGHT * s * 0.5, interp.y] as [number, number, number];
-      // Eye: oblicuo desde arriba-atrás (NE), distancia ~25m. Mantiene
-      // proporción consistente independientemente del zoom previo.
-      const dist = 25;
-      const eye = [interp.x + dist * 0.6, headTopY + dist * 0.5, interp.y + dist * 0.6] as [number, number, number];
+      // Eye en coords esféricas alrededor del operario, configurables por
+      // usuario. Permite huir de paredes que tapen subiendo elevation, o
+      // rotar alrededor cambiando azimuth.
+      const dist = Math.max(2, camFollowDistRef.current);
+      const azRad = (camFollowAzRef.current * Math.PI) / 180;
+      const elevRad = (camFollowElevRef.current * Math.PI) / 180;
+      const horiz = dist * Math.cos(elevRad);
+      const eye = [
+        interp.x + horiz * Math.sin(azRad),
+        look[1] + dist * Math.sin(elevRad),
+        interp.y + horiz * Math.cos(azRad),
+      ] as [number, number, number];
       try {
         viewer.cameraFlight.flyTo({ eye, look, up: [0, 1, 0], duration: 0.6 });
       } catch { /* ignore */ }
     };
     flyToAvatarRef.current = flyToAvatar;
+
+    // Expose `flyToTag` on the viewer window key so paneles laterales (p.ej.
+    // WorkerInfoPanel) puedan acercar la cámara a un operario sin tener que
+    // pasar por props ni callbacks.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__rtlsViewer.flyToTag = flyToAvatar;
 
     return () => {
       canvas.removeEventListener('wheel', wheelHandler);
@@ -567,6 +626,7 @@ export function PositioningViewer3D({
       loadedModelsRef.current.clear();
       cameraFramedRef.current = false;
       floorMeshRef.current = null;
+      floorSolidMeshRef.current = null;
       trailMeshRef.current = null;
       trailBufferRef.current.clear();
       try { viewer.destroy(); } catch { /* viewer may already be destroyed */ }
@@ -693,18 +753,45 @@ export function PositioningViewer3D({
               size: gridSize,
               divisions,
             })),
-            // Líneas WebGL son siempre 1px (limitación estándar). Para
-            // que se perciban más "finas" / sutiles se baja la
-            // luminosidad emissive → menos protagonismo visual.
+            // Líneas WebGL son siempre 1px (limitación estándar). Color
+            // tierra claro / crema para que el suelo de planta industrial
+            // se distinga del fondo oscuro y se lea como "área de trabajo".
+            // RGB 0-1 — color es el difuso, emissive lo que se ve sin luz.
             material: new PhongMaterial(viewer.scene, {
-              color: [0.20, 0.22, 0.24],
-              emissive: [0.32, 0.34, 0.37],
+              color: [0.65, 0.55, 0.40],
+              emissive: [0.83, 0.74, 0.58],
             }),
             position: [0, floorY, 0],
             pickable: false,
             collidable: false,
           });
           floorMeshRef.current = floor;
+
+          // Plano sólido color tierra/crema justo debajo del grid de líneas.
+          // El grid xeokit es solo LINES, así que para que los cuadritos se
+          // vean rellenos hace falta este mesh adicional. Lo bajamos 0.05 m
+          // para evitar z-fighting con las líneas. Pickable/collidable false
+          // — no debe interferir con clicks en zonas/avatares.
+          const solidFloor = new Mesh(viewer.scene, {
+            id: 'rtls-floor-solid',
+            origin: [centerX, 0, centerZ],
+            geometry: new ReadableGeometry(viewer.scene, buildPlaneGeometry({
+              xSize: gridSize,
+              zSize: gridSize,
+            })),
+            material: new PhongMaterial(viewer.scene, {
+              // Tierra clara / crema — RGB 0-1.
+              diffuse: [0.83, 0.74, 0.58],
+              emissive: [0.83, 0.74, 0.58],
+              ambient: [0.6, 0.55, 0.45],
+              alpha: 0.85,
+              alphaMode: 'blend',
+            }),
+            position: [0, floorY - 0.05, 0],
+            pickable: false,
+            collidable: false,
+          });
+          floorSolidMeshRef.current = solidFloor;
           console.log(
             '[3D] Grid suelo creado. origin=', [centerX, 0, centerZ],
             ' size=', gridSize, ' divisions=', divisions, ' floorY=', floorY,
@@ -1033,11 +1120,21 @@ export function PositioningViewer3D({
           const camCtl = viewer.scene.camera;
 
           if (cameraFlyToFollowRef.current) {
-            // Primera activación → fly suave a vista isométrica detrás.
+            // Primera activación → fly suave usando los mismos sphericals
+            // configurados por el usuario para localizar/seguir. Eso
+            // mantiene coherencia entre los dos modos.
             cameraFlyToFollowRef.current = false;
-            const offX = 22, offY = 18, offZ = 22;
+            const dist = Math.max(2, camFollowDistRef.current);
+            const azRad = (camFollowAzRef.current * Math.PI) / 180;
+            const elevRad = (camFollowElevRef.current * Math.PI) / 180;
+            const horiz = dist * Math.cos(elevRad);
+            const eye: [number, number, number] = [
+              tx + horiz * Math.sin(azRad),
+              ty + dist * Math.sin(elevRad),
+              tz + horiz * Math.cos(azRad),
+            ];
             viewer.cameraFlight.flyTo({
-              eye: [tx + offX, ty + offY, tz + offZ],
+              eye,
               look: [tx, ty, tz],
               up: [0, 1, 0],
               duration: 0.6,
@@ -1296,6 +1393,7 @@ export function PositioningViewer3D({
             : companyType === 'INTERNAL' ? '#34c759'
             : companyType === 'VISITOR' ? '#9b5fc7'
             : '#3a8ee0';
+        const hasSos = sosActiveTagIds?.has(tagId) ?? false;
         return (
           <div
             key={tagId}
@@ -1340,6 +1438,33 @@ export function PositioningViewer3D({
               whiteSpace: 'nowrap',
             }}
           >
+            {/* Badge "SOS" parpadeante encima de la pildora cuando el
+                operario tiene un SOS activo (live o replay). pointer-events
+                none para no robar clicks al pildora subyacente. */}
+            {hasSos && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: -22,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  padding: '2px 8px',
+                  borderRadius: 6,
+                  background: '#e63939',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 900,
+                  letterSpacing: 2,
+                  boxShadow: '0 0 10px rgba(230,57,57,0.95), 0 2px 4px rgba(0,0,0,0.3)',
+                  animation: 'rtls-sos-blink 0.7s ease-in-out infinite',
+                  pointerEvents: 'none',
+                  textShadow: '0 0 4px rgba(0,0,0,0.5)',
+                  zIndex: 200,
+                }}
+              >
+                SOS
+              </div>
+            )}
             <div
               data-avatar-circle
               data-base-color={circleBaseColor}

@@ -125,10 +125,18 @@ public class SosService {
     @Transactional
     public SosEvent cancel(Long sosId, String userId, String reason) {
         SosEvent ev = mustExist(sosId);
+        Instant now = Instant.now();
         ev.setStatus(SosEvent.Status.CANCELLED);
-        ev.setCancelledAt(Instant.now());
+        ev.setCancelledAt(now);
         ev.setCancelledBy(userId);
         ev.setCancelReason(reason);
+        // También cerramos el evento temporalmente — `resolvedAt` es la
+        // semántica única de "este SOS ya no está vivo" que consumen el
+        // replay y los KPIs. Sin esto, un SOS marcado como falso positivo
+        // se mostraba permanentemente activo en la timeline del replay.
+        if (ev.getResolvedAt() == null) {
+            ev.setResolvedAt(now);
+        }
         SosEvent saved = sosRepo.save(ev);
         broadcast(saved);
         return saved;

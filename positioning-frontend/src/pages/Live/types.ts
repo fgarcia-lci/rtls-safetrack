@@ -21,5 +21,26 @@ export interface PlantView {
   defaultAvatarHeightM?: number | null;
   displayOrder?: number | null;
   thumbnailUrl?: string | null;
+  /** FLOORPLAN_2D: world bbox of the SVG (meters). Null for MODEL_3D. */
+  worldBboxMinX?: number | null;
+  worldBboxMinY?: number | null;
+  worldBboxMaxX?: number | null;
+  worldBboxMaxY?: number | null;
+  svgFlipY?: boolean;
+  isActive?: boolean;
   layers: PlantViewLayer[];
+}
+
+export interface FloorplanUpsertPayload {
+  plantId: string;
+  code: string;
+  name: string;
+  svgContent: string;
+  worldBboxMinX: number;
+  worldBboxMinY: number;
+  worldBboxMaxX: number;
+  worldBboxMaxY: number;
+  svgFlipY?: boolean;
+  displayOrder?: number | null;
+  isActive?: boolean;
 }

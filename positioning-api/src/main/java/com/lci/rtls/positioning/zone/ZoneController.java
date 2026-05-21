@@ -56,6 +56,24 @@ public class ZoneController {
         return service.getById(id);
     }
 
+    /**
+     * Sugiere el próximo código de zona libre para una planta. Patrón:
+     * {@code ZONE-####}. Se llama desde el editor de zonas para auto-rellenar
+     * el campo "code".
+     */
+    @GetMapping("/next-code")
+    @PreAuthorize("hasRole('ADMIN')")
+    public java.util.Map<String, String> nextCode(@RequestParam String plantId) {
+        return java.util.Map.of("code", service.suggestNextCode(plantId));
+    }
+
+    @GetMapping("/check-code")
+    @PreAuthorize("hasRole('ADMIN')")
+    public java.util.Map<String, Boolean> checkCode(@RequestParam String plantId,
+                                                    @RequestParam String code) {
+        return java.util.Map.of("available", service.isCodeAvailable(plantId, code));
+    }
+
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<SafetyZoneDto> create(@Valid @RequestBody SafetyZoneCreateDto dto) {

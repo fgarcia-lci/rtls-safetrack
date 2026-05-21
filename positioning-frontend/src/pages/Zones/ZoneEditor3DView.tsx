@@ -472,7 +472,15 @@ export function ZoneEditor3DView({ plantView, otherZones, draftZone, onModelLoad
             });
             cameraFramedRef.current = true;
           }
-          onModelLoadedRef.current?.(Array.from(model.aabb));
+          // Importante: pasamos el aabb ORIGINAL (capturado ANTES de aplicar
+          // model.position con el offset Y), no el actual `model.aabb` que ya
+          // estaría desplazado. Lo que recibe el padre debe estar en el
+          // sistema de coordenadas del SIMULADOR — ahí es donde el motor
+          // backend evalúa zMin/zMax contra las posiciones de los operarios.
+          // Si pasáramos el aabb post-offset, el botón "snap a suelo" pondría
+          // un valor que NO coincide con el z=ymin que el simulador emite,
+          // y las zonas quedarían 6m por debajo respecto al simulador.
+          onModelLoadedRef.current?.(originalAabb);
         }
         setModelReady(true);
         // Forzar redraw — xeokit puede tener invalidación lazy y no

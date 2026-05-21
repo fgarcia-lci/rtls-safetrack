@@ -175,4 +175,39 @@ public class ZoneService {
         // Save funciona como upsert en JPA (existe → merge, no existe → insert).
         policyRepo.save(dto.toEntity(zoneId));
     }
+
+    // ---- Auto-generación de códigos de zona ----
+    //
+    // El patrón es {@code ZONE-####} (4 dígitos por planta — sobra). Buscamos
+    // el mayor número usado en códigos existentes de esa planta y devolvemos
+    // +1. El namespace de unicidad es (plantId, code), así que distintas
+    // plantas pueden reusar la misma numeración.
+
+    private static final java.util.regex.Pattern ZONE_CODE_PATTERN =
+            java.util.regex.Pattern.compile("^ZONE-(\\d+)$");
+
+    @Transactional(readOnly = true)
+    public String suggestNextCode(String plantId) {
+        int maxNum = 0;
+        for (SafetyZone z : zoneRepo.findByPlantIdAndDeletedAtIsNull(plantId)) {
+            String code = z.getCode();
+            if (code == null) continue;
+            java.util.regex.Matcher m = ZONE_CODE_PATTERN.matcher(code);
+            if (m.matches()) {
+                try {
+                    int n = Integer.parseInt(m.group(1));
+                    if (n > maxNum) maxNum = n;
+                } catch (NumberFormatException ignored) {
+                    // ignorar números fuera de rango
+                }
+            }
+        }
+        return String.format("ZONE-%04d", maxNum + 1);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isCodeAvailable(String plantId, String code) {
+        if (code == null || code.isBlank()) return false;
+        return !zoneRepo.existsByPlantIdAndCode(plantId, code);
+    }
 }

@@ -1,5 +1,6 @@
 package com.lci.rtls.positioning.worker;
 
+import com.lci.rtls.positioning.tag.dto.TagDto;
 import com.lci.rtls.positioning.worker.dto.RiskScoreDto;
 import com.lci.rtls.positioning.worker.dto.WorkerCreateDto;
 import com.lci.rtls.positioning.worker.dto.WorkerDto;
@@ -48,15 +49,42 @@ public class WorkerController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) CompanyType companyType,
             @RequestParam(required = false) Boolean isActive,
+            @RequestParam(required = false) WorkerSpecifications.RoleFilter roleFilter,
             @PageableDefault(size = 20, sort = "fullName") Pageable pageable
     ) {
-        return service.list(search, companyType, isActive, pageable);
+        return service.list(search, companyType, isActive, roleFilter, pageable);
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','USER')")
     public WorkerDto get(@PathVariable Long id) {
         return service.getById(id);
+    }
+
+    /**
+     * Sugiere el próximo employeeCode disponible siguiendo el patrón
+     * {@code EMP-#####}. Se llama desde el dialog de creación para auto-rellenar
+     * el campo. El código devuelto está libre en ese momento; si el admin lo
+     * edita, el dialog vuelve a validar con {@link #checkEmployeeCode}.
+     */
+    @GetMapping("/next-code")
+    @PreAuthorize("hasRole('ADMIN')")
+    public java.util.Map<String, String> nextCode() {
+        return java.util.Map.of("code", service.suggestNextEmployeeCode());
+    }
+
+    @GetMapping("/check-code")
+    @PreAuthorize("hasRole('ADMIN')")
+    public java.util.Map<String, Boolean> checkEmployeeCode(@RequestParam String code) {
+        return java.util.Map.of("available", service.isEmployeeCodeAvailable(code));
+    }
+
+    /** Tag actualmente asignado al worker. Devuelve 204 si no tiene. */
+    @GetMapping("/{id}/assigned-tag")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','USER')")
+    public ResponseEntity<TagDto> assignedTag(@PathVariable Long id) {
+        TagDto tag = service.getAssignedTag(id);
+        return tag == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(tag);
     }
 
     @PostMapping

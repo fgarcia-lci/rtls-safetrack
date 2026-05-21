@@ -10,4 +10,7 @@ public interface TagRepository extends JpaRepository<Tag, Long>, JpaSpecificatio
     Optional<Tag> findBySerial(String serial);
 
     boolean existsBySerial(String serial);
+
+    /** Tag asignado actualmente a un worker (puede ser empty si no tiene). */
+    Optional<Tag> findByAssignedWorker_Id(Long workerId);
 }

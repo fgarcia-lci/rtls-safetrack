@@ -28,12 +28,14 @@ import {
   Delete as DeleteIcon,
   Link as LinkIcon,
   LinkOff as LinkOffIcon,
+  OpenInNew as OpenInNewIcon,
   BatteryFull,
   Battery60,
   Battery30,
   BatteryAlert,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { tagService } from '../../services/tagService';
 import { useAuth } from '../../context/AuthContext';
 import { TagDialog } from './TagDialog';
@@ -82,6 +84,7 @@ type AssignedFilter = '' | 'true' | 'false';
 
 export function Tags() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = useMemo(() => user?.roles?.includes('ROLE_ADMIN') ?? false, [user]);
   const canAssign = useMemo(() =>
@@ -248,7 +251,12 @@ export function Tags() {
                 <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>{t('tags.noResults')}</TableCell></TableRow>
               )}
               {!loading && data?.content.map((tag) => (
-                <TableRow key={tag.id} hover>
+                <TableRow
+                  key={tag.id}
+                  hover
+                  onClick={() => navigate(`/tags/${tag.id}`)}
+                  sx={{ cursor: 'pointer' }}
+                >
                   <TableCell sx={{ fontFamily: 'monospace' }}>{tag.serial}</TableCell>
                   <TableCell>{tag.model ?? '—'}</TableCell>
                   <TableCell>
@@ -263,10 +271,15 @@ export function Tags() {
                       <span><BatteryIcon pct={tag.batteryLastPct} /></span>
                     </Tooltip>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     {tag.assignedWorkerName ? (
                       <Stack direction="row" spacing={1} alignItems="center">
-                        <span>{tag.assignedWorkerName}</span>
+                        <span
+                          style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}
+                          onClick={() => tag.assignedWorkerId && navigate(`/workers/${tag.assignedWorkerId}`)}
+                        >
+                          {tag.assignedWorkerName}
+                        </span>
                         <Typography variant="caption" color="text.secondary">({tag.assignedWorkerCode})</Typography>
                         {canAssign && tag.state !== 'DECOMMISSIONED' && (
                           <Tooltip title={t('tags.unassignTooltip')}>
@@ -285,8 +298,13 @@ export function Tags() {
                     )}
                   </TableCell>
                   <TableCell>{relativeTime(tag.lastSeenAt)}</TableCell>
-                  <TableCell align="right">
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      <Tooltip title={t('tags.actions.viewDetail', 'Ver ficha')}>
+                        <IconButton size="small" color="primary" onClick={() => navigate(`/tags/${tag.id}`)}>
+                          <OpenInNewIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       {isAdmin && (
                         <>
                           <Tooltip title={t('common.edit')}>

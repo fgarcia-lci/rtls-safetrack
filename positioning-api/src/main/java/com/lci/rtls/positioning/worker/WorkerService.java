@@ -2,6 +2,8 @@ package com.lci.rtls.positioning.worker;
 
 import com.lci.rtls.positioning.company.Company;
 import com.lci.rtls.positioning.company.CompanyRepository;
+import com.lci.rtls.positioning.tag.TagRepository;
+import com.lci.rtls.positioning.tag.dto.TagDto;
 import com.lci.rtls.positioning.worker.dto.WorkerCreateDto;
 import com.lci.rtls.positioning.worker.dto.WorkerDto;
 import com.lci.rtls.positioning.worker.dto.WorkerUpdateDto;
@@ -21,16 +23,29 @@ public class WorkerService {
 
     private final WorkerRepository repo;
     private final CompanyRepository companyRepo;
+    private final TagRepository tagRepo;
 
     @Transactional(readOnly = true)
-    public Page<WorkerDto> list(String search, CompanyType companyType, Boolean isActive, Pageable pageable) {
-        return repo.findAll(WorkerSpecifications.withFilters(search, companyType, isActive), pageable)
-                .map(WorkerDto::from);
+    public Page<WorkerDto> list(String search, CompanyType companyType, Boolean isActive,
+                                WorkerSpecifications.RoleFilter roleFilter, Pageable pageable) {
+        return repo.findAll(
+                WorkerSpecifications.withFilters(search, companyType, isActive, roleFilter),
+                pageable
+        ).map(WorkerDto::from);
     }
 
     @Transactional(readOnly = true)
     public WorkerDto getById(Long id) {
         return WorkerDto.from(loadOrFail(id));
+    }
+
+    /** Tag asignado al worker (puede ser null). Lo expone como TagDto plano. */
+    @Transactional(readOnly = true)
+    public TagDto getAssignedTag(Long workerId) {
+        loadOrFail(workerId); // valida que el worker exista
+        return tagRepo.findByAssignedWorker_Id(workerId)
+                .map(TagDto::from)
+                .orElse(null);
     }
 
     @Transactional
@@ -140,5 +155,40 @@ public class WorkerService {
     private Worker loadOrFail(Long id) {
         return repo.findById(id).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Worker " + id + " no encontrado"));
+    }
+
+    // ---- Auto-generación de códigos de empleado ----
+    //
+    // El patrón es {@code EMP-#####}. Buscamos el mayor número usado en códigos
+    // existentes y devolvemos +1. Si la base de datos está vacía, empezamos en
+    // EMP-00001. No bloquea la creación: si el admin escribe su propio código,
+    // se valida por unicidad como hasta ahora.
+
+    private static final java.util.regex.Pattern EMP_CODE_PATTERN =
+            java.util.regex.Pattern.compile("^EMP-(\\d+)$");
+
+    @Transactional(readOnly = true)
+    public String suggestNextEmployeeCode() {
+        int maxNum = 0;
+        for (Worker w : repo.findAll()) {
+            String code = w.getEmployeeCode();
+            if (code == null) continue;
+            java.util.regex.Matcher m = EMP_CODE_PATTERN.matcher(code);
+            if (m.matches()) {
+                try {
+                    int n = Integer.parseInt(m.group(1));
+                    if (n > maxNum) maxNum = n;
+                } catch (NumberFormatException ignored) {
+                    // códigos con número fuera de rango: ignorar
+                }
+            }
+        }
+        return String.format("EMP-%05d", maxNum + 1);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isEmployeeCodeAvailable(String code) {
+        if (code == null || code.isBlank()) return false;
+        return !repo.existsByEmployeeCode(code);
     }
 }

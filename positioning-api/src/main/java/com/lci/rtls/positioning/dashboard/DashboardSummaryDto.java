@@ -42,5 +42,9 @@ public record DashboardSummaryDto(
     public record WorkerRanking(Long workerId, String employeeCode, String fullName,
                                 String companyName, CompanyType companyType,
                                 String photoUrl, long eventCount) {}
-    public record CompanyPresence(String companyName, CompanyType companyType, int workersActive) {}
+    /** companyId puede ser null para empresas que solo viven como string libre
+     *  en pos_persons (legado). Solo las que están en el catálogo se pueden
+     *  abrir desde el dashboard como ficha. */
+    public record CompanyPresence(Long companyId, String companyName,
+                                  CompanyType companyType, int workersActive) {}
 }

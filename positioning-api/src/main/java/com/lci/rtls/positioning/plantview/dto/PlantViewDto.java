@@ -18,6 +18,13 @@ public record PlantViewDto(
         Double defaultAvatarHeightM,
         Integer displayOrder,
         String thumbnailUrl,
+        /** FLOORPLAN_2D: world bbox of the SVG (meters). Null for MODEL_3D. */
+        Double worldBboxMinX,
+        Double worldBboxMinY,
+        Double worldBboxMaxX,
+        Double worldBboxMaxY,
+        boolean svgFlipY,
+        boolean isActive,
         /** Lista de layers (XKTs por disciplina). Vacía si la vista es single-asset. */
         List<PlantViewLayerDto> layers
 ) {
@@ -35,6 +42,12 @@ public record PlantViewDto(
                 pv.getDefaultAvatarHeightM(),
                 pv.getDisplayOrder(),
                 pv.getThumbnailUrl(),
+                pv.getWorldBboxMinX(),
+                pv.getWorldBboxMinY(),
+                pv.getWorldBboxMaxX(),
+                pv.getWorldBboxMaxY(),
+                pv.isSvgFlipY(),
+                pv.isActive(),
                 layers
         );
     }

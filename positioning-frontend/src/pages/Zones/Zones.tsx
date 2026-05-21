@@ -32,6 +32,7 @@ import {
   Warning as WarningIcon,
   ToggleOn as ActivateIcon,
   ToggleOff as DeactivateIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -146,7 +147,8 @@ export const Zones = () => {
                 <TableRow
                   key={z.id}
                   hover
-                  sx={{ opacity: z.isActive ? 1 : 0.55 }}
+                  onClick={() => handleEdit(z)}
+                  sx={{ opacity: z.isActive ? 1 : 0.55, cursor: 'pointer' }}
                 >
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -173,7 +175,12 @@ export const Zones = () => {
                       ? <Chip size="small" label="Activa" color="success" variant="outlined" />
                       : <Chip size="small" label="Desactivada" variant="outlined" />}
                   </TableCell>
-                  <TableCell align="right">
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                    <Tooltip title="Ver / editar ficha">
+                      <IconButton size="small" color="primary" onClick={() => handleEdit(z)}>
+                        <OpenInNewIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="Editar">
                       <IconButton size="small" onClick={() => handleEdit(z)}>
                         <EditIcon fontSize="small" />

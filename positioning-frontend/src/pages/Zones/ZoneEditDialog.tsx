@@ -104,6 +104,10 @@ export function ZoneEditDialog({ open, onClose, onSaved, zone, plantId, otherZon
   // Estado UI
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Auto-generación + validación de unicidad del código (solo en isNew).
+  const [autoCode, setAutoCode] = useState('');
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [checkingCode, setCheckingCode] = useState(false);
   // modelAabb llega como prop desde el padre — se carga ANTES de abrir el
   // diálogo, así garantizamos que las zonas nuevas se posicionen en el
   // medio del modelo y no en (0,0) que cae a 30M m de distancia.
@@ -141,6 +145,15 @@ export function ZoneEditDialog({ open, onClose, onSaved, zone, plantId, otherZon
       // Defaults para nueva zona — centrada en el medio del modelo si
       // tenemos AABB (mucho más útil que (0,0) que cae fuera del mapa).
       setCode('');
+      setAutoCode('');
+      setCodeError(null);
+      // Pedimos el próximo código libre para esta planta y lo pre-rellenamos.
+      zoneService.getNextCode(plantId)
+        .then((c) => {
+          setAutoCode(c);
+          setCode((prev) => (prev === '' ? c : prev));
+        })
+        .catch(() => { /* el admin podrá teclearlo a mano */ });
       setName('');
       setDescription('');
       setType('DANGER');
@@ -187,6 +200,8 @@ export function ZoneEditDialog({ open, onClose, onSaved, zone, plantId, otherZon
     setError(null);
     if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
     if (isNew && !code.trim()) { setError('El código es obligatorio para zonas nuevas.'); return; }
+    if (codeError) { setError(codeError); return; }
+    if (checkingCode) { setError('Espera, estoy comprobando la disponibilidad del código...'); return; }
     if (polygon2d.length < 3) { setError('El polígono debe tener al menos 3 vértices.'); return; }
     if (zMin >= zMax) { setError('zMin debe ser menor que zMax.'); return; }
 
@@ -261,12 +276,42 @@ export function ZoneEditDialog({ open, onClose, onSaved, zone, plantId, otherZon
             <TextField
               label="Código"
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              onChange={(e) => {
+                setCode(e.target.value);
+                if (codeError) setCodeError(null);
+              }}
+              onBlur={async () => {
+                if (!isNew) return;
+                const c = code.trim();
+                setCodeError(null);
+                if (c === '') {
+                  if (autoCode) setCode(autoCode);
+                  return;
+                }
+                if (c === autoCode) return;
+                try {
+                  setCheckingCode(true);
+                  const available = await zoneService.checkCode(plantId, c);
+                  if (!available) setCodeError(`El código "${c}" ya está en uso en esta planta.`);
+                } catch {
+                  /* la unicidad final la garantiza el constraint backend */
+                } finally {
+                  setCheckingCode(false);
+                }
+              }}
               size="small"
               disabled={!isNew}
               required
+              error={!!codeError}
               sx={{ flex: 1 }}
-              helperText={isNew ? 'Único por planta (Z_CCM_03, Z_MOLINO_01...)' : 'No editable'}
+              helperText={
+                codeError
+                  ?? (isNew
+                    ? (checkingCode
+                      ? 'Comprobando disponibilidad...'
+                      : 'Se sugiere automáticamente. Puedes cambiarlo; se valida al salir del campo.')
+                    : 'No editable')
+              }
             />
             <TextField
               label="Nombre"

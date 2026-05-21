@@ -17,6 +17,10 @@ export const tagService = {
     const { data } = await api.get<PageResponse<Tag>>('/v1/tags', { params });
     return data;
   },
+  async getById(id: number): Promise<Tag> {
+    const { data } = await api.get<Tag>(`/v1/tags/${id}`);
+    return data;
+  },
   async getBySerial(serial: string): Promise<Tag> {
     const { data } = await api.get<Tag>('/v1/tags/by-serial', { params: { serial } });
     return data;

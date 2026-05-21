@@ -38,9 +38,10 @@ public class SearchService {
 
         String q = query.trim();
 
-        // Workers — busca por nombre, employeeCode, email.
+        // Workers — busca por nombre, employeeCode, email. La búsqueda global
+        // se centra en trabajadores reales (no supervisores ni managers puros).
         var workers = workerRepo.findAll(
-                WorkerSpecifications.withFilters(q, null, true),
+                WorkerSpecifications.withFilters(q, null, true, WorkerSpecifications.RoleFilter.WORKER),
                 PageRequest.of(0, MAX_PER_GROUP)
         );
         for (Worker w : workers.getContent()) {

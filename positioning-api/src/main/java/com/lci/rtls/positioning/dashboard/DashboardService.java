@@ -17,8 +17,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Calcula el resumen agregado del Dashboard. Cada KPI es una consulta o
@@ -133,8 +135,13 @@ public class DashboardService {
                 }).toList();
 
         // --- Empresas presentes (workers activos agrupados por empresa) ---
-        Map<String, int[]> companyCounts = new HashMap<>(); // company → [count, companyType ordinal]
+        // Agrupa por nombre de empresa (string libre) y, si todos los workers
+        // de ese grupo apuntan al mismo company del catálogo, expone su id
+        // para que el dashboard pueda enlazar a /companies/:id.
+        Map<String, int[]> companyCounts = new HashMap<>();
         Map<String, com.lci.rtls.positioning.worker.CompanyType> companyTypeByName = new HashMap<>();
+        Map<String, Long> companyIdByName = new HashMap<>();
+        Set<String> ambiguousCompanyIds = new HashSet<>();
         for (Tag t : tags) {
             if (t.getAssignedWorker() == null) continue;
             if (t.getLastSeenAt() == null || t.getLastSeenAt().isBefore(now.minus(ACTIVE_THRESHOLD))) continue;
@@ -143,9 +150,20 @@ public class DashboardService {
             if (c == null) continue;
             companyCounts.computeIfAbsent(c, k -> new int[]{0})[0]++;
             companyTypeByName.putIfAbsent(c, w.getCompanyType());
+            Long catalogId = w.getCompany() != null ? w.getCompany().getId() : null;
+            if (catalogId != null) {
+                Long existing = companyIdByName.get(c);
+                if (existing == null) {
+                    companyIdByName.put(c, catalogId);
+                } else if (!existing.equals(catalogId)) {
+                    // Mismo nombre pero distinto id en el catálogo — no enlazable.
+                    ambiguousCompanyIds.add(c);
+                }
+            }
         }
         List<DashboardSummaryDto.CompanyPresence> companies = companyCounts.entrySet().stream()
                 .map(e -> new DashboardSummaryDto.CompanyPresence(
+                        ambiguousCompanyIds.contains(e.getKey()) ? null : companyIdByName.get(e.getKey()),
                         e.getKey(),
                         companyTypeByName.get(e.getKey()),
                         e.getValue()[0]))

@@ -12,7 +12,27 @@ export interface ViewPrefs {
   collapsedNodeIds?: string[];
   /** Preferred view mode for this plant-view. */
   view?: '2D' | '3D';
+  /**
+   * Cámara cuando se localiza o se sigue a un operario. Esféricas respecto
+   * al target (operario):
+   *   distance = metros desde el operario.
+   *   azimuthDeg = rotación horizontal alrededor del operario (0° = norte,
+   *                 90° = este, 180° = sur, 270° = oeste).
+   *   elevationDeg = ángulo desde el suelo (0° = ras del suelo, 90° = cenital).
+   * Si falta, se aplican los defaults históricos: dist=25, az=45°, elev=30°.
+   */
+  cameraFollow?: {
+    distance?: number;
+    azimuthDeg?: number;
+    elevationDeg?: number;
+  };
 }
+
+export const CAMERA_FOLLOW_DEFAULTS = {
+  distance: 25,
+  azimuthDeg: 45,
+  elevationDeg: 30,
+} as const;
 
 export const userViewPrefsService = {
   async get(plantViewId: number): Promise<ViewPrefs> {

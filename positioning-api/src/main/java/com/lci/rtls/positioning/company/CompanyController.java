@@ -2,6 +2,7 @@ package com.lci.rtls.positioning.company;
 
 import com.lci.rtls.positioning.company.dto.CompanyDto;
 import com.lci.rtls.positioning.company.dto.CompanyUpsertDto;
+import com.lci.rtls.positioning.worker.dto.WorkerDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,6 +35,12 @@ public class CompanyController {
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','USER')")
     public CompanyDto get(@PathVariable Long id) {
         return service.get(id);
+    }
+
+    @GetMapping("/{id}/workers")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','USER')")
+    public List<WorkerDto> workers(@PathVariable Long id) {
+        return service.listWorkers(id);
     }
 
     @PostMapping

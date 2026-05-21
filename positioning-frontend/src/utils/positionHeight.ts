@@ -28,11 +28,9 @@ function parseBbox(raw: string | null | undefined): number[] | null {
 }
 
 /**
- * Altura del suelo de la fábrica (en unidades del modelo XKT). Es
- * `bbox.ymin + defaultYOffset` — el mismo valor que ve el admin como
- * "Suelo del modelo: X m" en el editor de zonas tras aplicar la
- * calibración. Si admin baja el modelo 6 m con yOffset = -6, el suelo
- * efectivo de la fábrica baja también esos 6 m.
+ * Altura del suelo del modelo XKT en el sistema de coordenadas DESPUÉS de
+ * aplicar el offset admin. Usado por el visor 3D para anclar elementos
+ * sintéticos (suelo grid, zonas) a la altura visible del modelo.
  *
  * Devuelve null si no hay bbox parseable.
  */
@@ -47,6 +45,14 @@ export function floorY(plantView: PlantViewBboxHolder | null | undefined): numbe
 /**
  * Altura del operario sobre el suelo del modelo, en metros.
  *
+ * <p>Importante: el simulador (y el HW real) emite posiciones en las
+ * coordenadas <strong>originales</strong> del modelo XKT — el {@code defaultYOffset}
+ * que aplica el admin es solo para visualización (baja el modelo en el viewer
+ * 3D). Por eso aquí comparamos contra {@code bbox.ymin} crudo, sin sumar el
+ * offset: si el simulador manda z = bbox.ymin, el operario está pisando el
+ * suelo y debe mostrarse 0 m, independientemente de cómo se haya calibrado
+ * la vista en pantalla.
+ *
  * @param z coordenada vertical del operario (campo `z` del PositionSnapshot).
  *          En el modelo RTLS Z es la altura; en xeokit equivale a Y.
  */
@@ -54,9 +60,10 @@ export function floorHeightM(
   plantView: PlantViewBboxHolder | null | undefined,
   z: number,
 ): number | null {
-  const floor = floorY(plantView);
-  if (floor === null) return null;
-  return z - floor;
+  if (!plantView) return null;
+  const bbox = parseBbox(plantView.bbox);
+  if (!bbox) return null;
+  return z - bbox[1];
 }
 
 /** Formato corto para mostrar la altura — "1.7 m" o "−0.3 m". */

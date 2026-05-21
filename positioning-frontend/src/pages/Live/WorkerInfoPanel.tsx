@@ -30,8 +30,10 @@ import {
   VisibilityOff as UnfollowIcon,
   Height as HeightIcon,
   PinDrop as PinDropIcon,
+  MyLocation as LocateIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { tagService } from '../../services/tagService';
 import { workerService } from '../../services/workerService';
 import { positionsStream } from '../../services/positionsStream';
@@ -124,6 +126,7 @@ export function WorkerInfoPanel({
   open, serial, plantView = null, onClose, following = false, onToggleFollow,
 }: Props) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [tag, setTag] = useState<Tag | null>(null);
   const [worker, setWorker] = useState<Worker | null>(null);
   const [loading, setLoading] = useState(false);
@@ -280,16 +283,57 @@ export function WorkerInfoPanel({
           {!loading && !error && tag && (
             <Stack spacing={2.5}>
               {/* Acciones rápidas */}
-              {onToggleFollow && (
+              <Stack direction="row" spacing={1}>
                 <Button
                   fullWidth
-                  variant={following ? 'contained' : 'outlined'}
-                  color={following ? 'success' : 'primary'}
-                  startIcon={following ? <UnfollowIcon /> : <FollowIcon />}
-                  onClick={onToggleFollow}
+                  variant="outlined"
+                  startIcon={<LocateIcon />}
+                  onClick={() => {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const v = (window as any).__rtlsViewer;
+                    if (v?.flyToTag) v.flyToTag(tag.serial);
+                  }}
                 >
-                  {following ? t('live.unfollow') : t('live.follow')}
+                  {t('live.locate', 'Localizar')}
                 </Button>
+                {onToggleFollow && (
+                  <Button
+                    fullWidth
+                    variant={following ? 'contained' : 'outlined'}
+                    color={following ? 'success' : 'primary'}
+                    startIcon={following ? <UnfollowIcon /> : <FollowIcon />}
+                    onClick={onToggleFollow}
+                  >
+                    {following ? t('live.unfollow') : t('live.follow')}
+                  </Button>
+                )}
+              </Stack>
+
+              {/* Atajos a las fichas detalladas. Solo se muestra el de empresa
+                  si el trabajador tiene una empresa asignada del catálogo. */}
+              {worker && (
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    startIcon={<BadgeIcon fontSize="small" />}
+                    onClick={() => { onClose(); navigate(`/workers/${worker.id}`); }}
+                  >
+                    Ficha trabajador
+                  </Button>
+                  {worker.companyId && (
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      startIcon={<BusinessIcon fontSize="small" />}
+                      onClick={() => { onClose(); navigate(`/companies/${worker.companyId}`); }}
+                    >
+                      Ficha empresa
+                    </Button>
+                  )}
+                </Stack>
               )}
 
               {/* Demo: disparar SOS como si lo hubiera pulsado el operario.

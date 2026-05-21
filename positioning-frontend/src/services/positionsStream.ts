@@ -29,12 +29,25 @@ interface TagState {
   receivedAt: number;     // performance.now()
 }
 
+/**
+ * Provider externo (modo Replay). Cuando está seteado, las consultas
+ * (`getTagIds`/`getInterpolated`/`getLast`) delegan en él en lugar de leer
+ * del WS. Cualquier batch que llegue por WS se sigue acumulando en
+ * `states` para reanudar el modo Live al instante cuando se desactive.
+ */
+export interface PositionsProvider {
+  getTagIds(): string[];
+  getInterpolated(tagId: string): InterpolatedPosition | null;
+  getLast(tagId: string): RealtimePosition | null;
+}
+
 class PositionsStream {
   private states = new Map<string, TagState>();
   private subscribers = new Set<() => void>();
   private currentPlantId: string | null = null;
   private subscribedTopic: string | null = null;
   private loading = false;
+  private replaySource: PositionsProvider | null = null;
 
   /**
    * Cambia la planta a observar. Si es la misma, no-op.
@@ -100,8 +113,12 @@ class PositionsStream {
   /**
    * Devuelve la posición interpolada (entre prev y last) en el momento actual.
    * Si elapsed > dt entre frames, devuelve last (no extrapola).
+   *
+   * Si hay un {@link replaySource} activo, delega en él — el visor consume
+   * la posición del histórico interpolada por el hook useReplayStream.
    */
   getInterpolated(tagId: string): InterpolatedPosition | null {
+    if (this.replaySource) return this.replaySource.getInterpolated(tagId);
     const s = this.states.get(tagId);
     if (!s) return null;
     const dt = s.receivedAt - s.prevReceivedAt;
@@ -121,15 +138,42 @@ class PositionsStream {
    * paneles informativos donde no hace falta animación.
    */
   getLast(tagId: string): RealtimePosition | null {
+    if (this.replaySource) return this.replaySource.getLast(tagId);
     return this.states.get(tagId)?.last ?? null;
   }
 
   getQuality(tagId: string): Quality | null {
+    if (this.replaySource) {
+      return this.replaySource.getLast(tagId)?.quality ?? null;
+    }
     return this.states.get(tagId)?.last.quality ?? null;
   }
 
   getTagIds(): string[] {
+    if (this.replaySource) return this.replaySource.getTagIds();
     return Array.from(this.states.keys());
+  }
+
+  /**
+   * Activa el modo replay: a partir de ahora, las consultas se sirven
+   * desde el provider en lugar del WS. Pasar null para volver a live.
+   * Notifica a suscriptores para que las vistas se enteren del cambio de
+   * conjunto de tagIds (puede ser distinto en el replay).
+   */
+  setReplaySource(source: PositionsProvider | null): void {
+    if (this.replaySource === source) return;
+    this.replaySource = source;
+    this.notify();
+  }
+
+  /**
+   * Fuerza una notificación a suscriptores. Útil cuando el provider del
+   * replay actualiza su conjunto de tagIds internamente y necesitamos que
+   * los hooks vuelvan a leerlos (la referencia del provider en sí no
+   * cambia, por lo que setReplaySource no notifica por su cuenta).
+   */
+  refresh(): void {
+    this.notify();
   }
 
   isLoading(): boolean {

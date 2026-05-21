@@ -14,6 +14,8 @@ import {
   Stack,
   Tooltip,
   Popover,
+  Slider,
+  Divider,
 } from '@mui/material';
 import {
   Tune as TuneIcon,
@@ -25,6 +27,9 @@ import type { ModelViewConfig } from '../../utils/modelViewConfig';
 interface Props {
   /** Config actual (origen único de la verdad — vive en el padre). */
   config: ModelViewConfig;
+  /** Si false, las secciones de calibración (offset Y, altura avatar,
+   *  vista inicial, reset) se ocultan. La cámara siempre se muestra. */
+  isAdmin: boolean;
   /** Cambio numérico del offset Y. */
   onYOffsetChange: (value: number) => void;
   /** Cambio de la altura del avatar (en metros). */
@@ -33,14 +38,30 @@ interface Props {
   onCaptureView: () => void;
   /** Reset a defaults (yOffset=0, eye/look=null → flyTo default). */
   onReset: () => void;
+  // ---- Cámara cuando se localiza / sigue un operario (por usuario) ----
+  cameraFollowDistance: number;
+  cameraFollowAzimuthDeg: number;
+  cameraFollowElevationDeg: number;
+  onCameraFollowChange: (patch: {
+    distance?: number;
+    azimuthDeg?: number;
+    elevationDeg?: number;
+  }) => void;
+  onCameraFollowReset: () => void;
 }
 
 export function ModelViewSettingsPanel({
   config,
+  isAdmin,
   onYOffsetChange,
   onAvatarHeightChange,
   onCaptureView,
   onReset,
+  cameraFollowDistance,
+  cameraFollowAzimuthDeg,
+  cameraFollowElevationDeg,
+  onCameraFollowChange,
+  onCameraFollowReset,
 }: Props) {
   const { t } = useTranslation();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
@@ -70,6 +91,67 @@ export function ModelViewSettingsPanel({
             {t('modelSettings.title')}
           </Typography>
 
+          {/* Cámara para Localizar / Seguir — visible para TODOS los usuarios
+              porque es preferencia personal. Sphericals (distancia,
+              elevación, rotación horizontal) son más intuitivos que ofssets
+              cartesianos para una persona no técnica. */}
+          <Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5, fontWeight: 600 }}>
+              Cámara al localizar/seguir operario
+            </Typography>
+
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              Distancia: <strong>{cameraFollowDistance.toFixed(0)} m</strong>
+            </Typography>
+            <Slider
+              size="small"
+              min={8} max={60} step={1}
+              value={cameraFollowDistance}
+              onChange={(_, v) => onCameraFollowChange({ distance: typeof v === 'number' ? v : v[0] })}
+            />
+
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              Elevación (desde el suelo): <strong>{cameraFollowElevationDeg.toFixed(0)}°</strong>
+            </Typography>
+            <Slider
+              size="small"
+              min={5} max={89} step={1}
+              value={cameraFollowElevationDeg}
+              onChange={(_, v) => onCameraFollowChange({ elevationDeg: typeof v === 'number' ? v : v[0] })}
+            />
+            <Typography variant="caption" color="text.disabled" sx={{ display: 'block', fontSize: 10, mt: -0.5 }}>
+              Sube este valor si las paredes te tapan al operario.
+            </Typography>
+
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              Rotación horizontal: <strong>{cameraFollowAzimuthDeg.toFixed(0)}°</strong>
+            </Typography>
+            <Slider
+              size="small"
+              min={0} max={359} step={5}
+              value={cameraFollowAzimuthDeg}
+              onChange={(_, v) => onCameraFollowChange({ azimuthDeg: typeof v === 'number' ? v : v[0] })}
+            />
+            <Typography variant="caption" color="text.disabled" sx={{ display: 'block', fontSize: 10, mt: -0.5 }}>
+              Por dónde "entra" la cámara. 45° = NE (default).
+            </Typography>
+
+            <Button
+              size="small"
+              startIcon={<RestoreIcon />}
+              onClick={onCameraFollowReset}
+              fullWidth
+              sx={{ mt: 1 }}
+            >
+              Volver a valores por defecto
+            </Button>
+          </Box>
+
+          {isAdmin && <Divider />}
+
+          {/* A partir de aquí — solo admin: calibración del modelo. */}
+          {isAdmin && (
+            <>
           {/* Offset Y */}
           <Box>
             <Typography variant="caption" color="text.secondary">
@@ -144,6 +226,8 @@ export function ModelViewSettingsPanel({
           >
             {t('modelSettings.reset')}
           </Button>
+            </>
+          )}
         </Stack>
       </Popover>
     </>

@@ -19,6 +19,10 @@ export interface WorkerRanking {
 }
 
 export interface CompanyPresence {
+  /** Id en el catálogo si todos los workers de este grupo apuntan a la misma
+   *  empresa del catálogo. Null si la empresa es solo texto libre o si hay
+   *  ambigüedad — entonces el chip no es clicable. */
+  companyId: number | null;
   companyName: string;
   companyType: CompanyType;
   workersActive: number;

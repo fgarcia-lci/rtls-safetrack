@@ -33,9 +33,11 @@
     "dashboard": "Dashboard",
     "live": "Live view",
     "workers": "Workers",
+    "companies": "Companies",
     "tags": "Tags",
     "zones": "Safety zones",
     "events": "Events",
+    "plantViews": "Plant views",
     "settings": "Settings"
   },
   "plant": {

@@ -1,5 +1,6 @@
 package com.lci.rtls.positioning.worker.dto;
 
+import com.lci.rtls.positioning.company.Company;
 import com.lci.rtls.positioning.worker.CompanyType;
 import com.lci.rtls.positioning.worker.Worker;
 
@@ -8,6 +9,11 @@ import java.time.LocalDate;
 
 /**
  * Representación de un Worker para respuestas REST. Plano (sin entidades anidadas).
+ *
+ * <p>Lleva achatados los datos de contacto del supervisor / supervisor de respaldo
+ * y de la empresa (centralita + manager) para que la ficha del trabajador pueda
+ * pintarse sin tener que hacer más peticiones — es el origen de la columna
+ * "Supervisión + Empresa" del WorkerDetail.
  */
 public record WorkerDto(
         Long id,
@@ -32,12 +38,23 @@ public record WorkerDto(
         boolean isWorkerInPlant,
         boolean isSupervisor,
         boolean isCompanyManager,
-        // --- Supervisor / empresa ---
+        // --- Supervisor / empresa (con contacto achatado) ---
         Long supervisorId,
         String supervisorName,
+        String supervisorPhone,
+        String supervisorEmail,
         Long backupSupervisorId,
         String backupSupervisorName,
+        String backupSupervisorPhone,
+        String backupSupervisorEmail,
         Long companyId,
+        String companyCatalogName,
+        String companyPhone,
+        String companyEmail,
+        Long companyManagerId,
+        String companyManagerName,
+        String companyManagerPhone,
+        String companyManagerEmail,
         // --- PRL ---
         LocalDate lastPrlTrainingDate,
         int prlValidMonths,
@@ -46,6 +63,8 @@ public record WorkerDto(
     public static WorkerDto from(Worker w) {
         Worker sup = w.getSupervisorPerson();
         Worker bkp = w.getBackupSupervisorPerson();
+        Company company = w.getCompany();
+        Worker mgr = company != null ? company.getManagerPerson() : null;
         return new WorkerDto(
                 w.getId(),
                 w.getEmployeeCode(),
@@ -70,9 +89,20 @@ public record WorkerDto(
                 w.isCompanyManager(),
                 sup != null ? sup.getId() : null,
                 sup != null ? sup.getFullName() : null,
+                sup != null ? sup.getPhone() : null,
+                sup != null ? sup.getEmail() : null,
                 bkp != null ? bkp.getId() : null,
                 bkp != null ? bkp.getFullName() : null,
-                w.getCompany() != null ? w.getCompany().getId() : null,
+                bkp != null ? bkp.getPhone() : null,
+                bkp != null ? bkp.getEmail() : null,
+                company != null ? company.getId() : null,
+                company != null ? company.getName() : null,
+                company != null ? company.getPhone() : null,
+                company != null ? company.getEmail() : null,
+                mgr != null ? mgr.getId() : null,
+                mgr != null ? mgr.getFullName() : null,
+                mgr != null ? mgr.getPhone() : null,
+                mgr != null ? mgr.getEmail() : null,
                 w.getLastPrlTrainingDate(),
                 w.getPrlValidMonths(),
                 w.getSupervisorNotes()

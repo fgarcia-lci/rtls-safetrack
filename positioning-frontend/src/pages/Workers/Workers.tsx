@@ -14,6 +14,7 @@ import {
   TableContainer,
   TableRow,
   TablePagination,
+  TableSortLabel,
   Chip,
   IconButton,
   Tooltip,
@@ -27,17 +28,22 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   MyLocation as MyLocationIcon,
-  Person as PersonIcon,
+  OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { workerService } from '../../services/workerService';
+import { workerService, type WorkerRoleFilter } from '../../services/workerService';
 import { useAuth } from '../../context/AuthContext';
 import { WorkerDialog } from './WorkerDialog';
 import type { CompanyType, PageResponse, Worker } from '../../types/worker';
 
 type CompanyFilter = '' | CompanyType;
 type ActiveFilter = '' | 'true' | 'false';
+
+// Columnas ordenables — mapean a propiedades JPA de la entidad. Las que no
+// están aquí (Acciones, Roles) no se incluyen en el sort del backend.
+type SortField = 'employeeCode' | 'fullName' | 'companyName' | 'companyType' | 'email' | 'isActive';
+type SortDir = 'asc' | 'desc';
 
 const useDebounced = <T,>(value: T, delay = 300): T => {
   const [v, setV] = useState(value);
@@ -58,8 +64,21 @@ export function Workers() {
   const [search, setSearch] = useState('');
   const [companyType, setCompanyType] = useState<CompanyFilter>('');
   const [isActive, setIsActive] = useState<ActiveFilter>('true');
+  const [roleFilter, setRoleFilter] = useState<WorkerRoleFilter>('ALL');
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
+  const [sortField, setSortField] = useState<SortField>('fullName');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+    setPage(0);
+  };
 
   const debouncedSearch = useDebounced(search);
 
@@ -81,9 +100,10 @@ export function Workers() {
         search: debouncedSearch || undefined,
         companyType: companyType || undefined,
         isActive: isActive === '' ? undefined : isActive === 'true',
+        roleFilter,
         page,
         size: pageSize,
-        sort: 'fullName,asc',
+        sort: `${sortField},${sortDir}`,
       });
       setData(result);
     } catch (err: unknown) {
@@ -92,7 +112,7 @@ export function Workers() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, companyType, isActive, page, pageSize, t]);
+  }, [debouncedSearch, companyType, isActive, roleFilter, page, pageSize, sortField, sortDir, t]);
 
   useEffect(() => {
     fetchPage();
@@ -191,6 +211,22 @@ export function Workers() {
             <MenuItem value="true">{t('common.active')}</MenuItem>
             <MenuItem value="false">{t('common.inactive')}</MenuItem>
           </TextField>
+          <TextField
+            select
+            size="small"
+            label="Rol"
+            value={roleFilter}
+            onChange={(e) => {
+              setPage(0);
+              setRoleFilter(e.target.value as WorkerRoleFilter);
+            }}
+            sx={{ minWidth: 200 }}
+          >
+            <MenuItem value="ALL">Todos</MenuItem>
+            <MenuItem value="WORKER">Trabajadores en planta</MenuItem>
+            <MenuItem value="SUPERVISOR">Supervisores</MenuItem>
+            <MenuItem value="MANAGER">Managers de empresa</MenuItem>
+          </TextField>
           <Box sx={{ flexGrow: 1 }} />
           {isAdmin && (
             <Button startIcon={<AddIcon />} variant="contained" onClick={handleCreate}>
@@ -205,32 +241,58 @@ export function Workers() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>{t('workers.columns.employeeCode')}</TableCell>
-                <TableCell>{t('workers.columns.fullName')}</TableCell>
-                <TableCell>{t('workers.columns.companyName')}</TableCell>
-                <TableCell>{t('workers.columns.companyType')}</TableCell>
-                <TableCell>{t('workers.columns.email')}</TableCell>
-                <TableCell>{t('workers.columns.isActive')}</TableCell>
+                {([
+                  ['employeeCode', t('workers.columns.employeeCode')],
+                  ['fullName', t('workers.columns.fullName')],
+                  ['companyName', t('workers.columns.companyName')],
+                  ['companyType', t('workers.columns.companyType')],
+                  ['email', t('workers.columns.email')],
+                ] as [SortField, string][]).map(([field, label]) => (
+                  <TableCell key={field} sortDirection={sortField === field ? sortDir : false}>
+                    <TableSortLabel
+                      active={sortField === field}
+                      direction={sortField === field ? sortDir : 'asc'}
+                      onClick={() => handleSort(field)}
+                    >
+                      {label}
+                    </TableSortLabel>
+                  </TableCell>
+                ))}
+                <TableCell>Roles</TableCell>
+                <TableCell sortDirection={sortField === 'isActive' ? sortDir : false}>
+                  <TableSortLabel
+                    active={sortField === 'isActive'}
+                    direction={sortField === 'isActive' ? sortDir : 'asc'}
+                    onClick={() => handleSort('isActive')}
+                  >
+                    {t('workers.columns.isActive')}
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell align="right">{t('workers.columns.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                     <CircularProgress size={28} />
                   </TableCell>
                 </TableRow>
               )}
               {!loading && (data?.content.length ?? 0) === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                     {t('workers.noResults')}
                   </TableCell>
                 </TableRow>
               )}
               {!loading && data?.content.map((w) => (
-                <TableRow key={w.id} hover>
+                <TableRow
+                  key={w.id}
+                  hover
+                  onClick={() => navigate(`/workers/${w.id}`)}
+                  sx={{ cursor: 'pointer' }}
+                >
                   <TableCell sx={{ fontFamily: 'monospace' }}>{w.employeeCode}</TableCell>
                   <TableCell>{w.fullName}</TableCell>
                   <TableCell>{w.companyName}</TableCell>
@@ -243,28 +305,48 @@ export function Workers() {
                   </TableCell>
                   <TableCell>{w.email ?? '—'}</TableCell>
                   <TableCell>
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                      {w.isWorkerInPlant && (
+                        <Chip size="small" label="Trabajador" color="primary" variant="outlined" />
+                      )}
+                      {w.isSupervisor && (
+                        <Chip size="small" label="Supervisor" color="warning" variant="outlined" />
+                      )}
+                      {w.isCompanyManager && (
+                        <Chip size="small" label="Manager" color="secondary" variant="outlined" />
+                      )}
+                      {!w.isWorkerInPlant && !w.isSupervisor && !w.isCompanyManager && (
+                        <Typography variant="caption" color="text.disabled">—</Typography>
+                      )}
+                    </Stack>
+                  </TableCell>
+                  <TableCell>
                     <Chip
                       label={w.isActive ? t('common.active') : t('common.inactive')}
                       color={w.isActive ? 'success' : 'default'}
                       size="small"
                     />
                   </TableCell>
-                  <TableCell align="right">
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                       <Tooltip title={t('workers.actions.viewDetail', 'Ver ficha')}>
                         <IconButton
                           size="small"
+                          color="primary"
                           onClick={() => navigate(`/workers/${w.id}`)}
                         >
-                          <PersonIcon fontSize="small" />
+                          <OpenInNewIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title={t('workers.actions.locateOn3D', 'Localizar en 3D')}>
+                      <Tooltip title={
+                        !w.isWorkerInPlant
+                          ? 'Solo aplica a trabajadores en planta'
+                          : t('workers.actions.locateOn3D', 'Localizar en 3D')
+                      }>
                         <span>
                           <IconButton
                             size="small"
-                            color="primary"
-                            disabled={!w.isActive}
+                            disabled={!w.isActive || !w.isWorkerInPlant}
                             onClick={() => handleLocate(w)}
                           >
                             <MyLocationIcon fontSize="small" />

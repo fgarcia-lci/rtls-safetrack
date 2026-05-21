@@ -14,15 +14,32 @@ public final class WorkerSpecifications {
 
     private WorkerSpecifications() {}
 
-    public static Specification<Worker> withFilters(String search, CompanyType companyType, Boolean isActive) {
+    /**
+     * Filtro por rol. WORKER (default histórico) limita a personas en planta,
+     * SUPERVISOR/MANAGER muestran sólo esos roles, ALL incluye a todos los
+     * registros sin filtrar por rol (útil cuando un supervisor o manager
+     * no es trabajador y necesita editarse desde la UI).
+     */
+    public enum RoleFilter { WORKER, SUPERVISOR, MANAGER, ALL }
+
+    public static Specification<Worker> withFilters(String search,
+                                                    CompanyType companyType,
+                                                    Boolean isActive,
+                                                    RoleFilter roleFilter) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            // El endpoint /v1/workers solo devuelve trabajadores reales — las
-            // personas que sólo son supervisor o manager se acceden vía
-            // /v1/persons (admin) o /v1/supervisors. Esto evita que la lista
-            // de "trabajadores en planta" se contamine con roles auxiliares.
-            predicates.add(cb.isTrue(root.get("workerInPlant")));
+            // Por defecto (roleFilter == null o WORKER) seguimos devolviendo
+            // sólo trabajadores en planta, para no romper integraciones que
+            // ya esperan ese comportamiento. La UI puede pedir otros valores
+            // para gestionar supervisores y managers desde la misma página.
+            RoleFilter effective = roleFilter != null ? roleFilter : RoleFilter.WORKER;
+            switch (effective) {
+                case WORKER -> predicates.add(cb.isTrue(root.get("workerInPlant")));
+                case SUPERVISOR -> predicates.add(cb.isTrue(root.get("supervisor")));
+                case MANAGER -> predicates.add(cb.isTrue(root.get("companyManager")));
+                case ALL -> { /* sin filtro de rol */ }
+            }
 
             if (StringUtils.hasText(search)) {
                 String like = "%" + search.toLowerCase() + "%";

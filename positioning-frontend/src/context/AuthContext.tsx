@@ -242,11 +242,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }
       clearAuth();
-      performLogout();
+      await performLogout();
     } catch (error) {
       console.error('Logout failed:', error);
       clearAuth();
-      performLogout();
+      await performLogout();
     }
   };
 

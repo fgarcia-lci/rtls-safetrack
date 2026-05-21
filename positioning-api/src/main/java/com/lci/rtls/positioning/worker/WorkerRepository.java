@@ -17,4 +17,7 @@ public interface WorkerRepository extends JpaRepository<Worker, Long>, JpaSpecif
 
     /** Personas marcadas como manager de empresa — para dropdowns en CompanyDialog. */
     List<Worker> findByCompanyManagerTrueAndIsActiveTrue();
+
+    /** Empleados (cualquier rol) asignados a una empresa concreta del catálogo. */
+    List<Worker> findByCompany_IdOrderByFullNameAsc(Long companyId);
 }

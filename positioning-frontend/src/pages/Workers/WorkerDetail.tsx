@@ -41,6 +41,9 @@ import {
   TableHead,
   TableRow,
   LinearProgress,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -57,11 +60,21 @@ import {
   Map as MapIcon,
   ThreeDRotation as ThreeDIcon,
   Refresh as RefreshIcon,
+  Edit as EditIcon,
+  ExpandMore as ExpandMoreIcon,
+  InfoOutlined as InfoIcon,
+  Memory as ChipIcon,
+  BatteryAlert as BatteryAlertIcon,
 } from '@mui/icons-material';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { workerService } from '../../services/workerService';
+import { useAuth } from '../../context/AuthContext';
+import { WorkerDialog } from './WorkerDialog';
+import { EventDetailModal } from '../../components/EventDetailModal/EventDetailModal';
+import type { EventType as EventDetailType } from '../../types/eventDetail';
 import type { Worker } from '../../types/worker';
+import type { Tag } from '../../types/tag';
 import type {
   WorkerHistory,
   RiskScore,
@@ -142,10 +155,18 @@ export function WorkerDetail() {
   const { t: _t } = useTranslation();
 
   const workerId = Number(id);
+  const { user } = useAuth();
+  const isAdmin = useMemo(() => user?.roles?.includes('ROLE_ADMIN') ?? false, [user]);
+
   const [worker, setWorker] = useState<Worker | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>('overview');
+  const [editOpen, setEditOpen] = useState(false);
+
+  // Bumped al guardar la edición para forzar re-fetch de la ficha y de los
+  // tabs que dependen del worker (los tabs releen el worker a su ritmo).
+  const [refreshTick, setRefreshTick] = useState(0);
 
   // Carga ficha estática.
   useEffect(() => {
@@ -157,7 +178,7 @@ export function WorkerDetail() {
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Error cargando trabajador'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [workerId]);
+  }, [workerId, refreshTick]);
 
   if (!Number.isFinite(workerId)) {
     return <Alert severity="error" sx={{ m: 3 }}>ID de trabajador inválido.</Alert>;
@@ -197,6 +218,14 @@ export function WorkerDetail() {
               <BackIcon />
             </IconButton>
           </Tooltip>
+          {isAdmin && (
+            <Tooltip title="Editar trabajador">
+              <IconButton size="small" onClick={() => setEditOpen(true)}
+                sx={{ position: 'absolute', top: 8, right: 8, color: '#fff' }}>
+                <EditIcon />
+              </IconButton>
+            </Tooltip>
+          )}
           <Stack alignItems="center" spacing={1.5} sx={{ mt: 2 }}>
             <Avatar src={worker.photoUrl ?? undefined}
               sx={{ width: 96, height: 96, fontSize: 36, fontWeight: 700,
@@ -297,11 +326,11 @@ export function WorkerDetail() {
         {/* Acciones */}
         <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
           <Button fullWidth variant="contained" startIcon={<LocateIcon />}
-            onClick={() => navigate(`/live?focusWorker=${worker.id}`)}>
+            onClick={() => navigate(`/live?focusWorker=${worker.id}&fly=true`)}>
             Localizar en 3D
           </Button>
           <Button fullWidth variant="outlined" startIcon={<FollowIcon />}
-            onClick={() => navigate(`/live?focusWorker=${worker.id}&follow=true`)}>
+            onClick={() => navigate(`/live?focusWorker=${worker.id}&follow=true&fly=true`)}>
             Seguir en 3D
           </Button>
         </Box>
@@ -317,12 +346,21 @@ export function WorkerDetail() {
           <Tab value="incidents" label="Incidentes" />
         </Tabs>
         <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
-          {tab === 'overview' && <OverviewTab workerId={workerId} />}
+          {tab === 'overview' && <OverviewTab workerId={workerId} worker={worker} />}
           {tab === 'history' && <HistoryTab workerId={workerId} />}
           {tab === 'risk' && <RiskTab workerId={workerId} />}
           {tab === 'incidents' && <IncidentsTab workerId={workerId} />}
         </Box>
       </Box>
+
+      {/* Diálogo de edición — solo se monta cuando el admin lo abre. */}
+      <WorkerDialog
+        open={editOpen}
+        mode="edit"
+        initial={worker}
+        onClose={() => setEditOpen(false)}
+        onSaved={() => setRefreshTick((n) => n + 1)}
+      />
     </Box>
   );
 }
@@ -349,9 +387,11 @@ function SidebarField({ icon, label, value }: { icon: React.ReactNode; label: st
 // Tab: Resumen
 // -----------------------------------------------------------------------------
 
-function OverviewTab({ workerId }: { workerId: number }) {
+function OverviewTab({ workerId, worker }: { workerId: number; worker: Worker }) {
+  const navigate = useNavigate();
   const [risk, setRisk] = useState<RiskScore | null>(null);
   const [history, setHistory] = useState<WorkerHistory | null>(null);
+  const [tag, setTag] = useState<Tag | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -362,54 +402,255 @@ function OverviewTab({ workerId }: { workerId: number }) {
     Promise.all([
       workerService.getRiskScore(workerId),
       workerService.getHistory(workerId, yesterday.toISOString(), now.toISOString()),
+      workerService.getAssignedTag(workerId),
     ])
-      .then(([r, h]) => { if (!cancelled) { setRisk(r); setHistory(h); } })
+      .then(([r, h, t]) => { if (!cancelled) { setRisk(r); setHistory(h); setTag(t); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [workerId]);
 
-  if (loading) return <Skeleton variant="rectangular" height={300} />;
-
   return (
     <Stack spacing={3}>
-      <Typography variant="h6">Últimas 24 horas</Typography>
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2 }}>
-        <KpiCard label="Alertas DANGER" value={history?.counts.dangerEntries ?? 0} color="error" />
-        <KpiCard label="Alertas RESTRICTED" value={history?.counts.restrictedEntries ?? 0} color="warning" />
-        <KpiCard label="Tiempo en DANGER" value={formatDuration(history?.counts.totalDurationDangerSec ?? 0)} color="error" />
-        <KpiCard label="SOS disparados" value={history?.counts.sosCount ?? 0} color="error" />
+      {/* Bloque de contactos clave — dos columnas: Supervisión / Empresa.
+          El supervisor responde primero; si no localizable, escalamos al manager
+          de la empresa. Los teléfonos y emails son clicables. */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
+        <ContactPanel
+          title="Supervisión"
+          subtitle="Primer escalado ante una alerta de este trabajador"
+          empty="Sin supervisor asignado"
+          contacts={[
+            worker.supervisorName ? {
+              role: 'Supervisor principal',
+              name: worker.supervisorName,
+              phone: worker.supervisorPhone,
+              email: worker.supervisorEmail,
+              onClickName: worker.supervisorId ? () => navigate(`/workers/${worker.supervisorId}`) : undefined,
+            } : null,
+            worker.backupSupervisorName ? {
+              role: 'Supervisor de respaldo',
+              name: worker.backupSupervisorName,
+              phone: worker.backupSupervisorPhone,
+              email: worker.backupSupervisorEmail,
+              onClickName: worker.backupSupervisorId ? () => navigate(`/workers/${worker.backupSupervisorId}`) : undefined,
+            } : null,
+          ].filter(Boolean) as ContactRow[]}
+          notes={worker.supervisorNotes ?? undefined}
+        />
+        <ContactPanel
+          title="Empresa"
+          subtitle="Contacto institucional y manager personal"
+          empty="Sin empresa del catálogo asignada"
+          headerAction={worker.companyId ? (
+            <Button size="small" onClick={() => navigate(`/companies/${worker.companyId}`)}>
+              Ver ficha empresa
+            </Button>
+          ) : undefined}
+          contacts={[
+            worker.companyId ? {
+              role: 'Centralita / contacto general',
+              name: worker.companyCatalogName ?? worker.companyName,
+              phone: worker.companyPhone,
+              email: worker.companyEmail,
+            } : null,
+            worker.companyManagerName ? {
+              role: 'Manager de la empresa',
+              name: worker.companyManagerName,
+              phone: worker.companyManagerPhone,
+              email: worker.companyManagerEmail,
+              onClickName: worker.companyManagerId ? () => navigate(`/workers/${worker.companyManagerId}`) : undefined,
+            } : null,
+          ].filter(Boolean) as ContactRow[]}
+        />
       </Box>
 
-      {risk && (
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="overline" color="text.secondary">Score de riesgo (30 días)</Typography>
-          <Stack direction="row" spacing={3} alignItems="center" sx={{ mt: 1 }}>
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="h2" sx={{ fontWeight: 700, lineHeight: 1,
-                color: `${RISK_LEVEL_COLOR[risk.level]}.main` }}>
-                {risk.normalized.toFixed(1)}
+      {/* Tag asignado — útil para ver de un vistazo si el operario está
+          siendo trackeado y el estado de batería. Si no tiene tag, lo decimos
+          explícitamente porque "sin tag" se traduce en "no se ve en planta". */}
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
+          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ flex: 1 }}>
+            <ChipIcon color={tag ? 'primary' : 'disabled'} />
+            <Box>
+              <Typography variant="overline" color="text.secondary" sx={{ display: 'block', lineHeight: 1 }}>
+                Tag asignado
               </Typography>
-              <Typography variant="caption" color="text.secondary">/ 10</Typography>
-            </Box>
-            <Box sx={{ flex: 1 }}>
-              <Chip
-                label={RISK_LEVEL_LABEL[risk.level]}
-                color={RISK_LEVEL_COLOR[risk.level]}
-                sx={{ fontWeight: 700, mb: 1 }}
-              />
-              <Typography variant="body2" color="text.secondary">
-                {risk.breakdown.dangerEntries} entradas DANGER · {risk.breakdown.restrictedEntries} RESTRICTED · {risk.breakdown.sosCount} SOS
-              </Typography>
-              {risk.breakdown.recidivismFactor > 1 && (
-                <Typography variant="caption" color="error.main">
-                  ↻ Reincidencia detectada (×{risk.breakdown.recidivismFactor})
+              {tag ? (
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                  <Typography
+                    variant="body1"
+                    sx={{
+                      fontFamily: 'monospace', fontWeight: 600,
+                      cursor: 'pointer', '&:hover': { textDecoration: 'underline' },
+                    }}
+                    onClick={() => navigate(`/tags/${tag.id}`)}
+                  >
+                    {tag.serial}
+                  </Typography>
+                  <Chip size="small" label={tag.state} variant="outlined" />
+                  {tag.batteryLastPct != null && (
+                    <Chip
+                      size="small"
+                      icon={tag.batteryLastPct < 20 ? <BatteryAlertIcon fontSize="small" /> : undefined}
+                      label={`${tag.batteryLastPct}%`}
+                      color={tag.batteryLastPct < 20 ? 'error' : tag.batteryLastPct < 40 ? 'warning' : 'success'}
+                      variant="outlined"
+                    />
+                  )}
+                </Stack>
+              ) : (
+                <Typography variant="body2" color="text.disabled" sx={{ mt: 0.5 }}>
+                  Sin tag asignado — no aparecerá en el visor live.
                 </Typography>
               )}
             </Box>
           </Stack>
-        </Paper>
+          {tag && (
+            <Button size="small" onClick={() => navigate(`/tags/${tag.id}`)}>
+              Ver ficha del tag
+            </Button>
+          )}
+        </Stack>
+      </Paper>
+
+      {loading ? (
+        <Skeleton variant="rectangular" height={200} />
+      ) : (
+        <>
+          <Typography variant="h6">Últimas 24 horas</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 2 }}>
+            <KpiCard label="Alertas DANGER" value={history?.counts.dangerEntries ?? 0} color="error" />
+            <KpiCard label="Alertas RESTRICTED" value={history?.counts.restrictedEntries ?? 0} color="warning" />
+            <KpiCard label="Tiempo en DANGER" value={formatDuration(history?.counts.totalDurationDangerSec ?? 0)} color="error" />
+            <KpiCard label="SOS disparados" value={history?.counts.sosCount ?? 0} color="error" />
+          </Box>
+
+          {risk && (
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="overline" color="text.secondary">Score de riesgo (30 días)</Typography>
+              <Stack direction="row" spacing={3} alignItems="center" sx={{ mt: 1 }}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h2" sx={{ fontWeight: 700, lineHeight: 1,
+                    color: `${RISK_LEVEL_COLOR[risk.level]}.main` }}>
+                    {risk.normalized.toFixed(1)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">/ 10</Typography>
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <Chip
+                    label={RISK_LEVEL_LABEL[risk.level]}
+                    color={RISK_LEVEL_COLOR[risk.level]}
+                    sx={{ fontWeight: 700, mb: 1 }}
+                  />
+                  <Typography variant="body2" color="text.secondary">
+                    {risk.breakdown.dangerEntries} entradas DANGER · {risk.breakdown.restrictedEntries} RESTRICTED · {risk.breakdown.sosCount} SOS
+                  </Typography>
+                  {risk.breakdown.recidivismFactor > 1 && (
+                    <Typography variant="caption" color="error.main">
+                      ↻ Reincidencia detectada (×{risk.breakdown.recidivismFactor})
+                    </Typography>
+                  )}
+                </Box>
+              </Stack>
+            </Paper>
+          )}
+        </>
       )}
     </Stack>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// ContactPanel — bloque de contactos (Supervisión / Empresa) en dos columnas.
+// Teléfonos y emails son clicables. Si la fila tiene `onClickName`, el nombre
+// se vuelve enlace a la ficha del trabajador correspondiente.
+// -----------------------------------------------------------------------------
+
+interface ContactRow {
+  role: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  onClickName?: () => void;
+}
+
+interface ContactPanelProps {
+  title: string;
+  subtitle?: string;
+  empty: string;
+  contacts: ContactRow[];
+  notes?: string;
+  headerAction?: React.ReactNode;
+}
+
+function ContactPanel({ title, subtitle, empty, contacts, notes, headerAction }: ContactPanelProps) {
+  return (
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+        <Box>
+          <Typography variant="overline" color="text.secondary" sx={{ display: 'block', lineHeight: 1 }}>
+            {title}
+          </Typography>
+          {subtitle && (
+            <Typography variant="caption" color="text.secondary">{subtitle}</Typography>
+          )}
+        </Box>
+        {headerAction}
+      </Stack>
+      {contacts.length === 0 ? (
+        <Typography variant="body2" color="text.disabled" sx={{ mt: 1 }}>{empty}</Typography>
+      ) : (
+        <Stack divider={<Divider flexItem />} spacing={1.5} sx={{ mt: 1 }}>
+          {contacts.map((c, idx) => (
+            <Box key={`${c.role}-${idx}`}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                {c.role}
+              </Typography>
+              {c.onClickName ? (
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: 600, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                  onClick={c.onClickName}
+                >
+                  {c.name}
+                </Typography>
+              ) : (
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>{c.name}</Typography>
+              )}
+              <Stack direction="row" spacing={2} sx={{ mt: 0.25 }}>
+                {c.phone && (
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <PhoneIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                    <Typography variant="caption">
+                      <a href={`tel:${c.phone}`} style={{ color: 'inherit' }}>{c.phone}</a>
+                    </Typography>
+                  </Stack>
+                )}
+                {c.email && (
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <EmailIcon sx={{ fontSize: 14, color: 'text.secondary' }} />
+                    <Typography variant="caption">
+                      <a href={`mailto:${c.email}`} style={{ color: 'inherit' }}>{c.email}</a>
+                    </Typography>
+                  </Stack>
+                )}
+                {!c.phone && !c.email && (
+                  <Typography variant="caption" color="text.disabled">Sin contacto registrado</Typography>
+                )}
+              </Stack>
+            </Box>
+          ))}
+        </Stack>
+      )}
+      {notes && (
+        <Box sx={{ mt: 1.5, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            Notas privadas
+          </Typography>
+          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{notes}</Typography>
+        </Box>
+      )}
+    </Paper>
   );
 }
 
@@ -497,6 +738,28 @@ function HistoryTab({ workerId }: { workerId: number }) {
       {error && <Alert severity="error">{error}</Alert>}
       {loading && <LinearProgress />}
 
+      {/* Cabecera explicativa + leyenda del mapa */}
+      <Paper sx={{ px: 2, py: 1.5 }}>
+        <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
+          <Box sx={{ flex: 1, minWidth: 240 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              Recorrido del trabajador
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Cada punto es una lectura de posición; la línea conecta las muestras en orden temporal.
+              El color va de claro (inicio) a oscuro (fin) del rango seleccionado.
+              Los puntos rojos marcan dónde se disparó una alerta DANGER o RESTRICTED.
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <LegendDot color="hsl(210, 80%, 70%)" label="Inicio" />
+            <LegendDot color="hsl(210, 80%, 30%)" label="Fin" />
+            <LegendDot color="#e63939" label="Entrada DANGER" />
+            <LegendDot color="#f5b91d" label="Entrada RESTRICTED" />
+          </Stack>
+        </Stack>
+      </Paper>
+
       {/* Mapa */}
       <Paper sx={{ p: 0, height: 400, overflow: 'hidden', position: 'relative' }}>
         {viewMode === '2d' ? (
@@ -555,6 +818,16 @@ function HistoryTab({ workerId }: { workerId: number }) {
           </Table>
         </Paper>
       )}
+    </Stack>
+  );
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <Stack direction="row" alignItems="center" spacing={0.5}>
+      <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: color, flexShrink: 0,
+                 border: '1px solid rgba(0,0,0,0.12)' }} />
+      <Typography variant="caption" color="text.secondary">{label}</Typography>
     </Stack>
   );
 }
@@ -645,6 +918,32 @@ function Path2DCanvas({ history }: { history: WorkerHistory | null }) {
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
       ctx.stroke();
+    }
+
+    // Marcadores "Inicio" y "Fin" — orientan al usuario sobre la dirección
+    // temporal del recorrido. Cuadrado verde en el primer punto, cuadrado
+    // gris oscuro en el último.
+    const drawTimeMarker = (p: { ts: string; x: number; y: number },
+                             label: string, bg: string) => {
+      const [x, y] = xform(p.x, p.y);
+      const time = new Date(p.ts);
+      const timeStr = time.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      ctx.fillStyle = bg;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.rect(x - 6, y - 6, 12, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#1a1f2c';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${label} ${timeStr}`, x + 10, y);
+    };
+    if (history.positions.length >= 2) {
+      drawTimeMarker(history.positions[0], 'Inicio', '#34c759');
+      drawTimeMarker(history.positions[history.positions.length - 1], 'Fin', '#1a1f2c');
     }
   }, [history]);
 
@@ -739,6 +1038,58 @@ function RiskTab({ workerId }: { workerId: number }) {
           </Table>
         </Paper>
       )}
+
+      {/* Panel explicativo — plegable, fuera del flujo principal para no
+          robar atención de la métrica grande pero accesible al supervisor
+          que pregunte "¿de dónde sale este 6.4?" */}
+      <Accordion variant="outlined" disableGutters>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <InfoIcon fontSize="small" color="action" />
+            <Typography variant="subtitle2">¿Cómo se calcula el score de riesgo?</Typography>
+          </Stack>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Stack spacing={1.5}>
+            <Typography variant="body2">
+              El score combina cuatro factores de actividad del operario durante el periodo consultado
+              (por defecto los últimos 30 días):
+            </Typography>
+            <Box component="ul" sx={{ pl: 3, my: 0, '& li': { mb: 0.5 } }}>
+              <li>
+                <strong>Entradas en zonas peligrosas</strong>: ×5 por cada entrada en zonas DANGER,
+                ×3 por RESTRICTED, ×1 por WARNING.
+              </li>
+              <li>
+                <strong>SOS disparados</strong>: ×10 cada vez que el operario pulsa el botón de pánico.
+              </li>
+              <li>
+                <strong>Tiempo dentro de zonas peligrosas</strong>: ×0.5 por minuto acumulado dentro
+                de zonas DANGER (rondas largas suben más que entradas breves).
+              </li>
+              <li>
+                <strong>Factor de reincidencia</strong>: si el operario entró más de 3 veces a una
+                misma zona, todo el score se multiplica por 1.5.
+              </li>
+            </Box>
+            <Typography variant="body2">
+              El valor crudo resultante se normaliza al rango <strong>0–10</strong> dividiendo por el
+              percentil 90 del raw score de la planta en el mismo periodo. Esto permite comparar
+              operarios entre sí: un 10 significa "está entre el 10 % más conflictivo de la planta".
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ pt: 1 }}>
+              <Chip size="small" label="LOW · 0–3" color="success" variant="outlined" />
+              <Chip size="small" label="MEDIUM · 3–6" color="info" variant="outlined" />
+              <Chip size="small" label="HIGH · 6–8" color="warning" variant="outlined" />
+              <Chip size="small" label="CRITICAL · ≥8" color="error" variant="outlined" />
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              Los pesos son provisionales y se ajustarán con la información operativa real
+              (mantenimiento, estado de equipos, tipo de turno) en futuras iteraciones del motor de riesgo.
+            </Typography>
+          </Stack>
+        </AccordionDetails>
+      </Accordion>
     </Stack>
   );
 }
@@ -762,6 +1113,10 @@ function BreakdownRow({ label, points, color }: { label: string; points: number;
 function IncidentsTab({ workerId }: { workerId: number }) {
   const [history, setHistory] = useState<WorkerHistory | null>(null);
   const [loading, setLoading] = useState(true);
+  // Click en una fila abre el modal genérico del evento. type+id se mapean
+  // según la fila (sos/proximity), y onSeek queda sin pasar — desde aquí no
+  // tenemos un reloj de replay al que saltar.
+  const [eventSelection, setEventSelection] = useState<{ type: EventDetailType; id: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -780,49 +1135,66 @@ function IncidentsTab({ workerId }: { workerId: number }) {
   }
 
   return (
-    <Paper sx={{ p: 0, overflow: 'auto' }}>
-      <Table size="small" stickyHeader>
-        <TableHead>
-          <TableRow>
-            <TableCell>Fecha</TableCell>
-            <TableCell>Tipo</TableCell>
-            <TableCell>Zona / SOS</TableCell>
-            <TableCell align="right">Duración</TableCell>
-            <TableCell>Estado</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {history.sosEvents.map((s) => (
-            <TableRow key={`sos-${s.id}`}>
-              <TableCell>{formatDate(s.triggeredAt)}</TableCell>
-              <TableCell><Chip size="small" label="SOS" color="error" /></TableCell>
-              <TableCell>—</TableCell>
-              <TableCell align="right">
-                {s.resolvedAt ? formatDuration((new Date(s.resolvedAt).getTime() - new Date(s.triggeredAt).getTime()) / 1000) : '—'}
-              </TableCell>
-              <TableCell>{s.status}</TableCell>
+    <>
+      <Paper sx={{ p: 0, overflow: 'auto' }}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell>Fecha</TableCell>
+              <TableCell>Tipo</TableCell>
+              <TableCell>Zona / SOS</TableCell>
+              <TableCell align="right">Duración</TableCell>
+              <TableCell>Estado</TableCell>
             </TableRow>
-          ))}
-          {history.proximityEvents.slice().reverse().map((e) => (
-            <TableRow key={`prox-${e.id}`}>
-              <TableCell>{formatDate(e.enteredAt)}</TableCell>
-              <TableCell>
-                {e.zoneType && (
-                  <Chip size="small" label={e.zoneType} color={ZONE_TYPE_COLOR[e.zoneType]} />
-                )}
-              </TableCell>
-              <TableCell>{e.zoneName ?? e.zoneCode ?? `Zone ${e.zoneId}`}</TableCell>
-              <TableCell align="right">{formatDuration(e.durationSec)}</TableCell>
-              <TableCell>
-                {e.exitedAt
-                  ? (e.acknowledged ? 'Confirmada / cerrada' : 'Cerrada')
-                  : 'Dentro'}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Paper>
+          </TableHead>
+          <TableBody>
+            {history.sosEvents.map((s) => (
+              <TableRow
+                key={`sos-${s.id}`}
+                hover
+                sx={{ cursor: 'pointer' }}
+                onClick={() => setEventSelection({ type: 'SOS', id: s.id })}
+              >
+                <TableCell>{formatDate(s.triggeredAt)}</TableCell>
+                <TableCell><Chip size="small" label="SOS" color="error" /></TableCell>
+                <TableCell>—</TableCell>
+                <TableCell align="right">
+                  {s.resolvedAt ? formatDuration((new Date(s.resolvedAt).getTime() - new Date(s.triggeredAt).getTime()) / 1000) : '—'}
+                </TableCell>
+                <TableCell>{s.status}</TableCell>
+              </TableRow>
+            ))}
+            {history.proximityEvents.slice().reverse().map((e) => (
+              <TableRow
+                key={`prox-${e.id}`}
+                hover
+                sx={{ cursor: 'pointer' }}
+                onClick={() => setEventSelection({ type: 'PROXIMITY', id: e.id })}
+              >
+                <TableCell>{formatDate(e.enteredAt)}</TableCell>
+                <TableCell>
+                  {e.zoneType && (
+                    <Chip size="small" label={e.zoneType} color={ZONE_TYPE_COLOR[e.zoneType]} />
+                  )}
+                </TableCell>
+                <TableCell>{e.zoneName ?? e.zoneCode ?? `Zone ${e.zoneId}`}</TableCell>
+                <TableCell align="right">{formatDuration(e.durationSec)}</TableCell>
+                <TableCell>
+                  {e.exitedAt
+                    ? (e.acknowledged ? 'Confirmada / cerrada' : 'Cerrada')
+                    : 'Dentro'}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Paper>
+
+      <EventDetailModal
+        selection={eventSelection}
+        onClose={() => setEventSelection(null)}
+      />
+    </>
   );
 }
 

@@ -7,11 +7,16 @@ import type {
   WorkerUpdatePayload,
 } from '../types/worker';
 import type { RiskScore, WorkerHistory } from '../types/workerHistory';
+import type { Tag } from '../types/tag';
+
+/** Filtro por rol del backend. WORKER es el default histórico. */
+export type WorkerRoleFilter = 'WORKER' | 'SUPERVISOR' | 'MANAGER' | 'ALL';
 
 export interface WorkerListParams {
   search?: string;
   companyType?: CompanyType;
   isActive?: boolean;
+  roleFilter?: WorkerRoleFilter;
   page?: number;
   size?: number;
   sort?: string;
@@ -40,6 +45,29 @@ export const workerService = {
 
   async softDelete(id: number): Promise<void> {
     await api.delete(`/v1/workers/${id}`);
+  },
+
+  /** Tag asignado al worker (null si no tiene). */
+  async getAssignedTag(id: number): Promise<Tag | null> {
+    const res = await api.get<Tag>(`/v1/workers/${id}/assigned-tag`, {
+      // Aceptamos 204 sin cuerpo como "sin tag" — no es error.
+      validateStatus: (status) => (status >= 200 && status < 300) || status === 204,
+    });
+    return res.status === 204 ? null : res.data;
+  },
+
+  /** Próximo employeeCode libre (formato EMP-#####). */
+  async getNextCode(): Promise<string> {
+    const { data } = await api.get<{ code: string }>('/v1/workers/next-code');
+    return data.code;
+  },
+
+  /** ¿Está libre este employeeCode? */
+  async checkCode(code: string): Promise<boolean> {
+    const { data } = await api.get<{ available: boolean }>('/v1/workers/check-code', {
+      params: { code },
+    });
+    return data.available;
   },
 
   /**

@@ -8,15 +8,23 @@ import {
   Box,
   TextField,
   Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import {
   Search as SearchIcon,
   Person as PersonIcon,
   Sensors as SensorsIcon,
   Warning as ZoneIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { searchService, type SearchResult } from '../../services/searchService';
+import { workerService } from '../../services/workerService';
 import { config } from '../../config/config';
 
 const GROUP_LABEL: Record<SearchResult['type'], string> = {
@@ -39,6 +47,10 @@ export function GlobalSearch() {
   const [debounced, setDebounced] = useState('');
   const [options, setOptions] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  /** Modal "este trabajador no tiene tag" — aparece al buscar un operario sin
+   *  tag asignado: no podemos focalizarlo en /live, así que damos opción de
+   *  abrir su ficha. */
+  const [noTagDialog, setNoTagDialog] = useState<{ workerId: number; workerName: string } | null>(null);
 
   // Debounce 220ms para no saturar al servidor.
   useEffect(() => {
@@ -60,15 +72,28 @@ export function GlobalSearch() {
     return () => { cancelled = true; };
   }, [debounced, plantId]);
 
-  const handleSelect = (val: SearchResult | null) => {
+  const handleSelect = async (val: SearchResult | null) => {
     if (!val) return;
     if (val.type === 'WORKER') {
-      // Operario → buscar su tag y abrir panel. El backend devuelve el id
-      // del worker; en /live el panel se abre por serial del tag, no por
-      // workerId. Workaround: navegar con focusWorker=ID y dejar a Live
-      // que resuelva el primer tag del worker.
+      // Antes de navegar a /live, verificamos que el trabajador tenga tag
+      // asignado. Sin tag no se puede mostrar en el visor → enseñamos un
+      // modal con opción de abrir su ficha directamente.
+      setQuery('');
+      setOptions([]);
+      try {
+        const tag = await workerService.getAssignedTag(val.id);
+        if (tag == null) {
+          setNoTagDialog({ workerId: val.id, workerName: val.label });
+          return;
+        }
+      } catch {
+        // Si el endpoint falla por cualquier motivo, no bloqueamos la
+        // navegación — Live mostrará el estado "sin posición" si procede.
+      }
       navigate(`/live?focusWorker=${val.id}`);
-    } else if (val.type === 'TAG') {
+      return;
+    }
+    if (val.type === 'TAG') {
       navigate(`/live?focusTag=${encodeURIComponent(val.identifier)}`);
     } else if (val.type === 'ZONE') {
       navigate(`/zones/editor/${val.id}`);
@@ -79,6 +104,7 @@ export function GlobalSearch() {
   };
 
   return (
+    <>
     <Autocomplete<SearchResult, false, false, false>
       sx={{
         width: { xs: 200, sm: 320, md: 380 },
@@ -150,6 +176,40 @@ export function GlobalSearch() {
         </li>
       )}
     />
+
+    <Dialog
+      open={noTagDialog != null}
+      onClose={() => setNoTagDialog(null)}
+      maxWidth="xs"
+      fullWidth
+    >
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <InfoIcon color="info" />
+        Sin tag de seguimiento
+      </DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          <strong>{noTagDialog?.workerName}</strong> no tiene un tag de seguimiento
+          asignado, así que no se puede localizar en la vista en tiempo real.
+        </DialogContentText>
+        <DialogContentText sx={{ mt: 1.5, fontSize: 13 }}>
+          Puedes abrir su ficha para asignar un tag o consultar sus datos.
+        </DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setNoTagDialog(null)}>Cerrar</Button>
+        <Button
+          variant="contained"
+          onClick={() => {
+            if (noTagDialog) navigate(`/workers/${noTagDialog.workerId}`);
+            setNoTagDialog(null);
+          }}
+        >
+          Abrir ficha
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }
 

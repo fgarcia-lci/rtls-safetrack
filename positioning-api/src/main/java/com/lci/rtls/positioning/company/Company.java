@@ -55,9 +55,19 @@ public class Company {
     @Column(nullable = false, length = 20)
     private CompanyType type;
 
+    /** Teléfono de la centralita / contacto general de la empresa (V14). */
+    @Column(nullable = false, length = 40)
+    private String phone;
+
+    /** Email de contacto general de la empresa (V14). */
+    @Column(nullable = false, length = 120)
+    private String email;
+
     /**
-     * Manager principal. Nullable a nivel DB para flexibilidad de seed/import,
-     * pero la lógica de negocio exige uno para una empresa "completa".
+     * Manager principal — opcional. La empresa siempre tiene phone + email
+     * propios como contacto fiable; el manager es un puente para escalado
+     * personalizado cuando existe, pero su ausencia no impide crear/usar
+     * la empresa.
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "manager_person_id")

@@ -10,6 +10,10 @@ public record CompanyDto(
         Long id,
         String name,
         CompanyType type,
+        /** Teléfono / email de contacto general de la empresa (centralita). */
+        String phone,
+        String email,
+        /** Manager personal (opcional, puede ser null). */
         Long managerPersonId,
         String managerName,
         String managerPhone,
